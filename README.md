@@ -4,8 +4,8 @@
 
 ## 参考资料
 
-https://www.youtube.com/@MollyRocket/
-https://github.com/MzaxnaV/handmadehero_zig
+<https://www.youtube.com/@MollyRocket/>
+<https://github.com/MzaxnaV/handmadehero_zig>
 
 ## 说明
 
