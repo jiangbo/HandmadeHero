@@ -5,6 +5,7 @@ pub const UNICODE: bool = true;
 
 const WIDTH: i32 = 640;
 const HEIGHT: i32 = 480;
+var running: bool = true;
 
 pub fn main() !void {
     var class = std.mem.zeroes(win32.ui.windows_and_messaging.WNDCLASSW);
@@ -14,7 +15,7 @@ pub fn main() !void {
     class.lpszClassName = win32.zig.L("Handmade Hero");
 
     if (win32.ui.windows_and_messaging.RegisterClassW(&class) == 0) {
-        return std.log.err("registerClass failed: {}", .{win32.foundation.GetLastError()});
+        win32ErrorPanic();
     }
 
     var style = win32.ui.windows_and_messaging.WS_OVERLAPPEDWINDOW;
@@ -25,14 +26,14 @@ pub fn main() !void {
         style, default, default, WIDTH, HEIGHT, //
         null, null, class.hInstance, null);
 
-    if (window == null) {
-        return std.log.err("create window failed: {}", .{win32.foundation.GetLastError()});
-    }
+    if (window == null) win32ErrorPanic();
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
-    while (win32.ui.windows_and_messaging.GetMessage(&message, null, 0, 0) > 0) {
-        _ = win32.ui.windows_and_messaging.TranslateMessage(&message);
-        _ = win32.ui.windows_and_messaging.DispatchMessage(&message);
+    while (running) {
+        if (win32.ui.windows_and_messaging.GetMessage(&message, null, 0, 0) > 0) {
+            _ = win32.ui.windows_and_messaging.TranslateMessage(&message);
+            _ = win32.ui.windows_and_messaging.DispatchMessage(&message);
+        }
     }
 }
 
@@ -49,11 +50,15 @@ pub fn mainWindowCallback(
         win32.ui.windows_and_messaging.WM_SIZE => {
             std.log.info("size", .{});
         },
-        win32.ui.windows_and_messaging.WM_DESTROY => {
-            std.log.info("destroy", .{});
-            win32.ui.windows_and_messaging.PostQuitMessage(0);
-        },
+        win32.ui.windows_and_messaging.WM_CLOSE => running = false,
+        win32.ui.windows_and_messaging.WM_DESTROY => running = false,
         else => return win32.ui.windows_and_messaging.DefWindowProc(window, message, wParam, lParam),
     }
     return 0;
+}
+
+fn win32ErrorPanic() noreturn {
+    const err = win32.foundation.GetLastError();
+    std.log.err("win32 panic code {}", .{@intFromEnum(err)});
+    @panic(@tagName(err));
 }
