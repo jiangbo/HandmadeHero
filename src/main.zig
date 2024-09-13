@@ -54,6 +54,7 @@ fn createWindow() void {
 
     if (window == null) win32ErrorPanic();
     createDIBSection();
+    win32LoadXinput();
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
@@ -64,10 +65,53 @@ fn createWindow() void {
             _ = ui.TranslateMessage(&message);
             _ = ui.DispatchMessage(&message);
         }
+
+        for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
+            var state: xbox.XINPUT_STATE = undefined;
+            const success: u32 = @intFromEnum(win32.foundation.ERROR_SUCCESS);
+            if (success != xInputGetState(@intCast(index), &state)) {
+                continue;
+            }
+
+            const up = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_UP;
+            if (up != 0) std.log.debug("up", .{});
+            // const Down = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_DOWN;
+            // const Left = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_LEFT;
+            // const Right = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_RIGHT;
+            // const Start = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_START;
+            // const Back = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_BACK;
+            // const LeftShoulder = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_LEFT_SHOULDER;
+            // const RightShoulder = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_RIGHT_SHOULDER;
+            // const A = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_A;
+            // const B = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_B;
+            // const X = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_X;
+            // const Y = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_Y;
+
+            // const stickX = state.Gamepad.sThumbLX;
+            // const stickY = state.Gamepad.sThumbLY;
+        }
+
         renderWeirdGradient(offsetX, 0);
         offsetX += 1;
 
         win32UpdateWindow(hdc);
+    }
+}
+
+const xbox = win32.ui.input.xbox_controller;
+const winapi = std.os.windows.WINAPI;
+var xInputGetState: *const fn (u32, *xbox.XINPUT_STATE) callconv(winapi) u32 = undefined;
+var xInputSetState: *const fn (u32, *xbox.XINPUT_VIBRATION) callconv(winapi) u32 = undefined;
+fn win32LoadXinput() void {
+    const loader = win32.system.library_loader;
+    if (loader.LoadLibraryW(win32.zig.L("xinput1_4.dll"))) |library| {
+        if (loader.GetProcAddress(library, "XInputGetState")) |address| {
+            xInputGetState = @ptrCast(address);
+        }
+
+        if (loader.GetProcAddress(library, "XInputSetState")) |address| {
+            xInputSetState = @ptrCast(address);
+        }
     }
 }
 
