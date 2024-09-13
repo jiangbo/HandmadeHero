@@ -42,11 +42,19 @@ fn createWindow() void {
     if (window == null) win32ErrorPanic();
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
+    const ui = win32.ui.windows_and_messaging;
+    var offsetX: usize = 0;
     while (running) {
-        if (win32.ui.windows_and_messaging.GetMessage(&message, null, 0, 0) > 0) {
-            _ = win32.ui.windows_and_messaging.TranslateMessage(&message);
-            _ = win32.ui.windows_and_messaging.DispatchMessage(&message);
+        while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
+            _ = ui.TranslateMessage(&message);
+            _ = ui.DispatchMessage(&message);
         }
+        renderWeirdGradient(offsetX, 0);
+        offsetX += 1;
+
+        const hdc = win32.graphics.gdi.GetDC(window);
+        defer _ = win32.graphics.gdi.ReleaseDC(window, hdc);
+        win32UpdateWindow(hdc);
     }
 }
 
@@ -65,13 +73,15 @@ fn resizeDIBSection() void {
 
     const size: usize = @intCast(width * height * @sizeOf(Color));
     bitmapMemory = allocator.alloc(Color, size) catch unreachable.?;
+}
 
+fn renderWeirdGradient(offsetX: usize, offsetY: usize) void {
     const w: usize = @intCast(width);
     for (0..@as(usize, @intCast(height))) |y| {
         for (0..w) |x| {
             bitmapMemory.?[x + y * w] = .{
-                .b = @truncate(x),
-                .g = @truncate(y),
+                .b = @truncate(x + offsetX),
+                .g = @truncate(y + offsetY),
             };
         }
     }
