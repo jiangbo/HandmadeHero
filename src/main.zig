@@ -7,6 +7,11 @@ const WIDTH: i32 = 640;
 const HEIGHT: i32 = 480;
 var running: bool = true;
 
+var bitmapInfo: win32.graphics.gdi.BITMAPINFO = undefined;
+var bitmapMemory: ?*anyopaque = undefined;
+var bitmapHandle: ?win32.graphics.gdi.HBITMAP = undefined;
+var bdc: ?win32.graphics.gdi.HDC = undefined;
+
 pub fn main() !void {
     var class = std.mem.zeroes(win32.ui.windows_and_messaging.WNDCLASSW);
     class.style = .{ .OWNDC = 1, .HREDRAW = 1, .VREDRAW = 1 };
@@ -37,6 +42,36 @@ pub fn main() !void {
     }
 }
 
+fn resizeDIBSection(width: i32, height: i32) void {
+    if (bitmapHandle != null) {
+        _ = win32.graphics.gdi.DeleteObject(bitmapHandle);
+    }
+
+    if (bdc == null) {
+        bdc = win32.graphics.gdi.CreateCompatibleDC(null);
+    }
+
+    bitmapInfo = std.mem.zeroes(win32.graphics.gdi.BITMAPINFO);
+    bitmapInfo.bmiHeader.biSize = @sizeOf(@TypeOf(bitmapInfo.bmiHeader));
+    bitmapInfo.bmiHeader.biWidth = width;
+    bitmapInfo.bmiHeader.biHeight = height;
+    bitmapInfo.bmiHeader.biPlanes = 1;
+    bitmapInfo.bmiHeader.biBitCount = 32;
+    bitmapInfo.bmiHeader.biCompression = win32.graphics.gdi.BI_RGB;
+
+    bitmapHandle = win32.graphics.gdi.CreateDIBSection(bdc, //
+        &bitmapInfo, .RGB_COLORS, &bitmapMemory, null, 0);
+}
+
+const HDC = win32.graphics.gdi.HDC;
+fn win32UpdateWindow(hdc: ?HDC, x: i32, y: i32, w: i32, h: i32) void {
+    const result = win32.graphics.gdi.StretchDIBits(hdc, //
+        x, y, w, h, x, y, w, h, //
+        bitmapMemory, &bitmapInfo, //
+        .RGB_COLORS, win32.graphics.gdi.SRCCOPY);
+    if (result == 0) win32ErrorPanic();
+}
+
 pub fn mainWindowCallback(
     window: win32.foundation.HWND,
     message: u32,
@@ -48,11 +83,22 @@ pub fn mainWindowCallback(
             std.log.info("create", .{});
         },
         win32.ui.windows_and_messaging.WM_SIZE => {
-            var rect = std.mem.zeroes(win32.foundation.RECT);
+            var rect: win32.foundation.RECT = undefined;
             _ = win32.ui.windows_and_messaging.GetClientRect(window, &rect);
             // { .left = 0, .top = 0, .right = 624, .bottom = 441 }
             //  可以看到真实的客户区大小和定义的不一致，因为有边框这些。
-            std.log.debug("rect: {}", .{rect});
+            resizeDIBSection(rect.right - rect.left, rect.bottom - rect.top);
+        },
+        win32.ui.windows_and_messaging.WM_PAINT => {
+            var paint: win32.graphics.gdi.PAINTSTRUCT = undefined;
+            const hdc = win32.graphics.gdi.BeginPaint(window, &paint);
+            defer _ = win32.graphics.gdi.EndPaint(window, &paint);
+
+            const x = paint.rcPaint.left;
+            const y = paint.rcPaint.top;
+            const width = paint.rcPaint.right - paint.rcPaint.left;
+            const height = paint.rcPaint.bottom - paint.rcPaint.top;
+            win32UpdateWindow(hdc, x, y, width, height);
         },
         win32.ui.windows_and_messaging.WM_CLOSE => running = false,
         win32.ui.windows_and_messaging.WM_DESTROY => running = false,
