@@ -4,8 +4,8 @@ const win32 = @import("win32");
 pub const UNICODE: bool = true;
 
 var allocator: std.mem.Allocator = undefined;
-const WIDTH: i32 = 640;
-const HEIGHT: i32 = 480;
+var width: i32 = 640;
+var height: i32 = 480;
 var running: bool = true;
 
 var bitmapInfo: win32.graphics.gdi.BITMAPINFO = undefined;
@@ -36,7 +36,7 @@ fn createWindow() void {
     const default = win32.ui.windows_and_messaging.CW_USEDEFAULT;
     const window = win32.ui.windows_and_messaging.CreateWindowEx(.{}, //
         class.lpszClassName, win32.zig.L("手工英雄"), //
-        style, default, default, WIDTH, HEIGHT, //
+        style, default, default, width, height, //
         null, null, class.hInstance, null);
 
     if (window == null) win32ErrorPanic();
@@ -50,27 +50,38 @@ fn createWindow() void {
     }
 }
 
-const Color = extern struct { r: u8 = 0, g: u8 = 0, b: u8 = 0, a: u8 = 0 };
+const Color = extern struct { b: u8 = 0, g: u8 = 0, r: u8 = 0, a: u8 = 0 };
 
-fn resizeDIBSection(width: i32, height: i32) void {
+fn resizeDIBSection() void {
     if (bitmapMemory) |memory| allocator.free(memory);
 
     bitmapInfo = std.mem.zeroes(win32.graphics.gdi.BITMAPINFO);
     bitmapInfo.bmiHeader.biSize = @sizeOf(@TypeOf(bitmapInfo.bmiHeader));
     bitmapInfo.bmiHeader.biWidth = width;
-    bitmapInfo.bmiHeader.biHeight = height;
+    bitmapInfo.bmiHeader.biHeight = -height;
     bitmapInfo.bmiHeader.biPlanes = 1;
     bitmapInfo.bmiHeader.biBitCount = 32;
     bitmapInfo.bmiHeader.biCompression = win32.graphics.gdi.BI_RGB;
 
     const size: usize = @intCast(width * height * @sizeOf(Color));
-    bitmapMemory = allocator.alloc(Color, size) catch unreachable;
+    bitmapMemory = allocator.alloc(Color, size) catch unreachable.?;
+
+    const w: usize = @intCast(width);
+    for (0..@as(usize, @intCast(height))) |y| {
+        for (0..w) |x| {
+            bitmapMemory.?[x + y * w] = .{
+                .b = @truncate(x),
+                .g = @truncate(y),
+            };
+        }
+    }
 }
 
-const HDC = win32.graphics.gdi.HDC;
-fn win32UpdateWindow(hdc: ?HDC, x: i32, y: i32, w: i32, h: i32) void {
+fn win32UpdateWindow(hdc: ?win32.graphics.gdi.HDC) void {
+    const header = bitmapInfo.bmiHeader;
     const result = win32.graphics.gdi.StretchDIBits(hdc, //
-        x, y, w, h, x, y, w, h, //
+        0, 0, width, height, // 目标地址
+        0, 0, header.biWidth, -header.biHeight, // 源地址
         bitmapMemory.?.ptr, &bitmapInfo, //
         .RGB_COLORS, win32.graphics.gdi.SRCCOPY);
     if (result == 0) win32ErrorPanic();
@@ -87,22 +98,21 @@ pub fn mainWindowCallback(
             std.log.info("create", .{});
         },
         win32.ui.windows_and_messaging.WM_SIZE => {
+            std.log.info("resize", .{});
             var rect: win32.foundation.RECT = undefined;
             _ = win32.ui.windows_and_messaging.GetClientRect(window, &rect);
             // { .left = 0, .top = 0, .right = 624, .bottom = 441 }
             //  可以看到真实的客户区大小和定义的不一致，因为有边框这些。
-            resizeDIBSection(rect.right - rect.left, rect.bottom - rect.top);
+            width = rect.right - rect.left;
+            height = rect.bottom - rect.top;
+            resizeDIBSection();
         },
         win32.ui.windows_and_messaging.WM_PAINT => {
             var paint: win32.graphics.gdi.PAINTSTRUCT = undefined;
             const hdc = win32.graphics.gdi.BeginPaint(window, &paint);
             defer _ = win32.graphics.gdi.EndPaint(window, &paint);
 
-            const x = paint.rcPaint.left;
-            const y = paint.rcPaint.top;
-            const width = paint.rcPaint.right - paint.rcPaint.left;
-            const height = paint.rcPaint.bottom - paint.rcPaint.top;
-            win32UpdateWindow(hdc, x, y, width, height);
+            win32UpdateWindow(hdc);
         },
         win32.ui.windows_and_messaging.WM_CLOSE => running = false,
         win32.ui.windows_and_messaging.WM_DESTROY => running = false,
