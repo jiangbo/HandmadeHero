@@ -53,6 +53,7 @@ fn createWindow() void {
         null, null, class.hInstance, null);
 
     if (window == null) win32ErrorPanic();
+    createDIBSection();
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
@@ -72,7 +73,7 @@ fn createWindow() void {
 
 const Color = extern struct { b: u8 = 0, g: u8 = 0, r: u8 = 0, a: u8 = 0 };
 
-fn resizeDIBSection() void {
+fn createDIBSection() void {
     screenBuffer.deinit();
 
     screenBuffer.info = std.mem.zeroes(win32.graphics.gdi.BITMAPINFO);
@@ -117,23 +118,12 @@ pub fn mainWindowCallback(
     lParam: win32.foundation.LPARAM,
 ) callconv(std.os.windows.WINAPI) win32.foundation.LRESULT {
     switch (message) {
-        win32.ui.windows_and_messaging.WM_CREATE => {
-            std.log.info("create", .{});
-        },
         win32.ui.windows_and_messaging.WM_SIZE => {
             std.log.info("resize", .{});
             var rect: win32.foundation.RECT = undefined;
             _ = win32.ui.windows_and_messaging.GetClientRect(window, &rect);
             windowWidth = rect.right - rect.left;
             windowHeight = rect.bottom - rect.top;
-            resizeDIBSection();
-        },
-        win32.ui.windows_and_messaging.WM_PAINT => {
-            var paint: win32.graphics.gdi.PAINTSTRUCT = undefined;
-            const hdc = win32.graphics.gdi.BeginPaint(window, &paint);
-            defer _ = win32.graphics.gdi.EndPaint(window, &paint);
-
-            win32UpdateWindow(hdc);
         },
         win32.ui.windows_and_messaging.WM_CLOSE => running = false,
         win32.ui.windows_and_messaging.WM_DESTROY => running = false,
