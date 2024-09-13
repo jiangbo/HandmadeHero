@@ -3,16 +3,24 @@ const win32 = @import("win32");
 
 pub const UNICODE: bool = true;
 
+var allocator: std.mem.Allocator = undefined;
 const WIDTH: i32 = 640;
 const HEIGHT: i32 = 480;
 var running: bool = true;
 
 var bitmapInfo: win32.graphics.gdi.BITMAPINFO = undefined;
-var bitmapMemory: ?*anyopaque = undefined;
-var bitmapHandle: ?win32.graphics.gdi.HBITMAP = undefined;
-var bdc: ?win32.graphics.gdi.HDC = undefined;
+var bitmapMemory: ?[]Color = null;
 
 pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    allocator = gpa.allocator();
+
+    createWindow();
+    if (bitmapMemory) |memory| allocator.free(memory);
+}
+
+fn createWindow() void {
     var class = std.mem.zeroes(win32.ui.windows_and_messaging.WNDCLASSW);
     class.style = .{ .OWNDC = 1, .HREDRAW = 1, .VREDRAW = 1 };
     class.lpfnWndProc = mainWindowCallback;
@@ -42,14 +50,10 @@ pub fn main() !void {
     }
 }
 
-fn resizeDIBSection(width: i32, height: i32) void {
-    if (bitmapHandle != null) {
-        _ = win32.graphics.gdi.DeleteObject(bitmapHandle);
-    }
+const Color = extern struct { r: u8 = 0, g: u8 = 0, b: u8 = 0, a: u8 = 0 };
 
-    if (bdc == null) {
-        bdc = win32.graphics.gdi.CreateCompatibleDC(null);
-    }
+fn resizeDIBSection(width: i32, height: i32) void {
+    if (bitmapMemory) |memory| allocator.free(memory);
 
     bitmapInfo = std.mem.zeroes(win32.graphics.gdi.BITMAPINFO);
     bitmapInfo.bmiHeader.biSize = @sizeOf(@TypeOf(bitmapInfo.bmiHeader));
@@ -59,15 +63,15 @@ fn resizeDIBSection(width: i32, height: i32) void {
     bitmapInfo.bmiHeader.biBitCount = 32;
     bitmapInfo.bmiHeader.biCompression = win32.graphics.gdi.BI_RGB;
 
-    bitmapHandle = win32.graphics.gdi.CreateDIBSection(bdc, //
-        &bitmapInfo, .RGB_COLORS, &bitmapMemory, null, 0);
+    const size: usize = @intCast(width * height * @sizeOf(Color));
+    bitmapMemory = allocator.alloc(Color, size) catch unreachable;
 }
 
 const HDC = win32.graphics.gdi.HDC;
 fn win32UpdateWindow(hdc: ?HDC, x: i32, y: i32, w: i32, h: i32) void {
     const result = win32.graphics.gdi.StretchDIBits(hdc, //
         x, y, w, h, x, y, w, h, //
-        bitmapMemory, &bitmapInfo, //
+        bitmapMemory.?.ptr, &bitmapInfo, //
         .RGB_COLORS, win32.graphics.gdi.SRCCOPY);
     if (result == 0) win32ErrorPanic();
 }
