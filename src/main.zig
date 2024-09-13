@@ -48,7 +48,11 @@ pub fn mainWindowCallback(
             std.log.info("create", .{});
         },
         win32.ui.windows_and_messaging.WM_SIZE => {
-            std.log.info("size", .{});
+            var rect = std.mem.zeroes(win32.foundation.RECT);
+            _ = win32.ui.windows_and_messaging.GetClientRect(window, &rect);
+            // { .left = 0, .top = 0, .right = 624, .bottom = 441 }
+            //  可以看到真实的客户区大小和定义的不一致，因为有边框这些。
+            std.log.debug("rect: {}", .{rect});
         },
         win32.ui.windows_and_messaging.WM_CLOSE => running = false,
         win32.ui.windows_and_messaging.WM_DESTROY => running = false,
