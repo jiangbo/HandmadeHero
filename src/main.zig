@@ -71,6 +71,8 @@ fn createWindow() void {
     const ui = win32.ui.windows_and_messaging;
     var offsetX: usize = 0;
     const hdc = win32.graphics.gdi.GetDC(window);
+
+    var timer = std.time.Timer.start() catch unreachable;
     while (running) {
         while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
             _ = ui.TranslateMessage(&message);
@@ -97,6 +99,12 @@ fn createWindow() void {
 
         if (bytesToWrite != 0) win32FillSoundBuffer(&soundOutput, offset, bytesToWrite);
         win32UpdateWindow(hdc);
+
+        const delta = timer.lap();
+        std.log.debug("{} us, fps: {}", .{
+            delta / std.time.ns_per_us,
+            std.time.ns_per_s / delta,
+        });
     }
 }
 
