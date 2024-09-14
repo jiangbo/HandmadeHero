@@ -169,6 +169,22 @@ pub fn mainWindowCallback(
             windowWidth = rect.right - rect.left;
             windowHeight = rect.bottom - rect.top;
         },
+        win32.ui.windows_and_messaging.WM_KEYDOWN,
+        win32.ui.windows_and_messaging.WM_KEYUP,
+        win32.ui.windows_and_messaging.WM_SYSKEYDOWN,
+        win32.ui.windows_and_messaging.WM_SYSKEYUP,
+        => {
+            // if (wParam == @intFromEnum(win32.everything.VK_W))
+            //     std.log.debug("W pressed", .{});
+
+            if (wParam == 'W') std.log.debug("W pressed", .{});
+
+            const wasDown: bool = ((lParam & (1 << 30)) != 0);
+            const isDown: bool = ((lParam & (1 << 31)) == 0);
+            if (wasDown != isDown) {
+                if (wParam == 'W') std.log.debug("W down", .{});
+            }
+        },
         win32.ui.windows_and_messaging.WM_CLOSE => running = false,
         win32.ui.windows_and_messaging.WM_DESTROY => running = false,
         else => return win32.ui.windows_and_messaging.DefWindowProc(window, message, wParam, lParam),
