@@ -56,6 +56,8 @@ fn createWindow() void {
     createDIBSection();
     win32LoadXinput();
 
+    win32InitDSound(window, 2);
+
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
     var offsetX: usize = 0;
@@ -99,11 +101,10 @@ fn createWindow() void {
 }
 
 const xbox = win32.ui.input.xbox_controller;
-const winapi = std.os.windows.WINAPI;
-var xInputGetState: *const fn (u32, *xbox.XINPUT_STATE) callconv(winapi) u32 = undefined;
-var xInputSetState: *const fn (u32, *xbox.XINPUT_VIBRATION) callconv(winapi) u32 = undefined;
+var xInputGetState: *const @TypeOf(xbox.XInputGetState) = undefined;
+var xInputSetState: *const @TypeOf(xbox.XInputSetState) = undefined;
+const loader = win32.system.library_loader;
 fn win32LoadXinput() void {
-    const loader = win32.system.library_loader;
     if (loader.LoadLibraryW(win32.zig.L("xinput1_4.dll"))) |library| {
         if (loader.GetProcAddress(library, "XInputGetState")) |address| {
             xInputGetState = @ptrCast(address);
@@ -113,6 +114,49 @@ fn win32LoadXinput() void {
             xInputSetState = @ptrCast(address);
         }
     }
+}
+
+fn check(result: win32.foundation.HRESULT) void {
+    if (win32.zig.FAILED(result)) win32ErrorPanic();
+}
+
+const samplesPerSecond: u32 = 48000;
+const sound = win32.media.audio.direct_sound;
+var directSoundCreate: *const @TypeOf(sound.DirectSoundCreate) = undefined;
+fn win32InitDSound(window: ?win32.foundation.HWND, seconds: u32) void {
+    if (loader.LoadLibraryW(win32.zig.L("dsound.dll"))) |library| {
+        if (loader.GetProcAddress(library, "DirectSoundCreate")) |address| {
+            directSoundCreate = @ptrCast(address);
+        }
+    }
+    var directSound: *sound.IDirectSound = undefined;
+    check(directSoundCreate(null, @ptrCast(&directSound), null));
+    check(directSound.SetCooperativeLevel(window, sound.DSSCL_PRIORITY));
+
+    var bufferDesc = std.mem.zeroes(sound.DSBUFFERDESC);
+    bufferDesc.dwSize = @sizeOf(sound.DSBUFFERDESC);
+    bufferDesc.dwFlags = sound.DSBCAPS_PRIMARYBUFFER;
+    var primaryBuffer: ?*sound.IDirectSoundBuffer = null;
+
+    check(directSound.CreateSoundBuffer(&bufferDesc, &primaryBuffer, null));
+
+    var waveFormat = std.mem.zeroes(win32.media.audio.WAVEFORMATEX);
+    waveFormat.wFormatTag = win32.media.audio.WAVE_FORMAT_PCM;
+    waveFormat.nChannels = 2;
+    waveFormat.nSamplesPerSec = samplesPerSecond;
+    waveFormat.wBitsPerSample = 16;
+    waveFormat.nBlockAlign = (waveFormat.nChannels * waveFormat.wBitsPerSample) / 8;
+    waveFormat.nAvgBytesPerSec = waveFormat.nSamplesPerSec * waveFormat.nBlockAlign;
+    check(primaryBuffer.?.SetFormat(&waveFormat));
+
+    bufferDesc = std.mem.zeroes(sound.DSBUFFERDESC);
+    bufferDesc.dwSize = @sizeOf(sound.DSBUFFERDESC);
+    const bytesPerSample: u32 = @sizeOf(i16) * 2;
+    bufferDesc.dwBufferBytes = seconds * samplesPerSecond * bytesPerSample;
+    bufferDesc.lpwfxFormat = &waveFormat;
+
+    var secondaryBuffer: ?*sound.IDirectSoundBuffer = undefined;
+    check(directSound.CreateSoundBuffer(&bufferDesc, &secondaryBuffer, null));
 }
 
 const Color = extern struct { b: u8 = 0, g: u8 = 0, r: u8 = 0, a: u8 = 0 };
