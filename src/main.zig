@@ -54,10 +54,9 @@ fn createWindow() void {
 
     if (window == null) win32ErrorPanic();
     createDIBSection();
-    win32LoadXinput();
 
     win32InitDSound(window, 2);
-    check(secondaryBuffer.?.Play(0, 0, sound.DSBPLAY_LOOPING));
+    var soundIsPlaying = false;
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
@@ -67,31 +66,6 @@ fn createWindow() void {
         while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
             _ = ui.TranslateMessage(&message);
             _ = ui.DispatchMessage(&message);
-        }
-
-        for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
-            var state: xbox.XINPUT_STATE = undefined;
-            const success: u32 = @intFromEnum(win32.foundation.ERROR_SUCCESS);
-            if (success != xInputGetState(@intCast(index), &state)) {
-                continue;
-            }
-
-            const up = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_UP;
-            if (up != 0) std.log.debug("up", .{});
-            // const Down = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_DOWN;
-            // const Left = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_LEFT;
-            // const Right = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_RIGHT;
-            // const Start = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_START;
-            // const Back = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_BACK;
-            // const LeftShoulder = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_LEFT_SHOULDER;
-            // const RightShoulder = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_RIGHT_SHOULDER;
-            // const A = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_A;
-            // const B = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_B;
-            // const X = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_X;
-            // const Y = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_Y;
-
-            // const stickX = state.Gamepad.sThumbLX;
-            // const stickY = state.Gamepad.sThumbLY;
         }
 
         renderWeirdGradient(offsetX, 0);
@@ -152,23 +126,12 @@ fn createWindow() void {
         }
         check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
 
+        if (!soundIsPlaying) {
+            check(secondaryBuffer.?.Play(0, 0, sound.DSBPLAY_LOOPING));
+            soundIsPlaying = true;
+        }
+
         win32UpdateWindow(hdc);
-    }
-}
-
-const xbox = win32.ui.input.xbox_controller;
-var xInputGetState: *const @TypeOf(xbox.XInputGetState) = undefined;
-var xInputSetState: *const @TypeOf(xbox.XInputSetState) = undefined;
-const loader = win32.system.library_loader;
-fn win32LoadXinput() void {
-    if (loader.LoadLibraryW(win32.zig.L("xinput1_4.dll"))) |library| {
-        if (loader.GetProcAddress(library, "XInputGetState")) |address| {
-            xInputGetState = @ptrCast(address);
-        }
-
-        if (loader.GetProcAddress(library, "XInputSetState")) |address| {
-            xInputSetState = @ptrCast(address);
-        }
     }
 }
 
@@ -181,6 +144,7 @@ const bytesPerSample: u32 = @sizeOf(i16) * 2;
 const sound = win32.media.audio.direct_sound;
 var directSoundCreate: *const @TypeOf(sound.DirectSoundCreate) = undefined;
 var secondaryBuffer: ?*sound.IDirectSoundBuffer = undefined;
+const loader = win32.system.library_loader;
 fn win32InitDSound(window: ?win32.foundation.HWND, seconds: u32) void {
     if (loader.LoadLibraryW(win32.zig.L("dsound.dll"))) |library| {
         if (loader.GetProcAddress(library, "DirectSoundCreate")) |address| {
