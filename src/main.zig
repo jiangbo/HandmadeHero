@@ -57,6 +57,7 @@ fn createWindow() void {
     win32LoadXinput();
 
     win32InitDSound(window, 2);
+    check(secondaryBuffer.?.Play(0, 0, sound.DSBPLAY_LOOPING));
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
@@ -96,6 +97,61 @@ fn createWindow() void {
         renderWeirdGradient(offsetX, 0);
         offsetX += 1;
 
+        var runningSampleIndex: u32 = 0;
+        var playCursor: u32 = undefined;
+        var writeCursor: u32 = undefined;
+
+        check(secondaryBuffer.?.GetCurrentPosition(&playCursor, &writeCursor));
+
+        const bufferSize = 2 * samplesPerSecond * bytesPerSample;
+        const byteToLock: u32 = runningSampleIndex * bytesPerSample % bufferSize;
+        var bytesToWrite: u32 = 0;
+        if (byteToLock == playCursor) {
+            bytesToWrite = bufferSize;
+        } else if (byteToLock > playCursor) {
+            bytesToWrite = bufferSize - byteToLock;
+            bytesToWrite += playCursor;
+        } else {
+            bytesToWrite = playCursor - byteToLock;
+        }
+
+        var region1: [*]i16 = undefined;
+        var region1Size: u32 = 0;
+        var region2: [*]i16 = undefined;
+        var region2Size: u32 = 0;
+        check(secondaryBuffer.?.Lock(byteToLock, bytesToWrite, //
+            @ptrCast(&region1), &region1Size, @ptrCast(&region2), &region2Size, 0));
+
+        const toneHz = 256;
+        const squareWavePeriod = samplesPerSecond / toneHz;
+        const halfSquareWavePeriod = squareWavePeriod / 2;
+        const toneVolume = 3000;
+
+        var sampleOut = region1;
+        const region1SampleCount = region1Size / bytesPerSample;
+        for (0..@intCast(region1SampleCount)) |_| {
+            const value = (runningSampleIndex / halfSquareWavePeriod) % 2;
+            const sampleValue: i16 = if (value == 0) toneVolume else -toneVolume;
+            runningSampleIndex += 1;
+
+            sampleOut[0] = sampleValue;
+            sampleOut[1] = sampleValue;
+            sampleOut += 2;
+        }
+
+        sampleOut = region2;
+        const region2SampleCount = region2Size / bytesPerSample;
+        for (0..@intCast(region2SampleCount)) |_| {
+            const value = (runningSampleIndex / halfSquareWavePeriod) % 2;
+            const sampleValue: i16 = if (value == 0) toneVolume else -toneVolume;
+            runningSampleIndex += 1;
+
+            sampleOut[0] = sampleValue;
+            sampleOut[1] = sampleValue;
+            sampleOut += 2;
+        }
+        check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
+
         win32UpdateWindow(hdc);
     }
 }
@@ -121,8 +177,10 @@ fn check(result: win32.foundation.HRESULT) void {
 }
 
 const samplesPerSecond: u32 = 48000;
+const bytesPerSample: u32 = @sizeOf(i16) * 2;
 const sound = win32.media.audio.direct_sound;
 var directSoundCreate: *const @TypeOf(sound.DirectSoundCreate) = undefined;
+var secondaryBuffer: ?*sound.IDirectSoundBuffer = undefined;
 fn win32InitDSound(window: ?win32.foundation.HWND, seconds: u32) void {
     if (loader.LoadLibraryW(win32.zig.L("dsound.dll"))) |library| {
         if (loader.GetProcAddress(library, "DirectSoundCreate")) |address| {
@@ -151,11 +209,9 @@ fn win32InitDSound(window: ?win32.foundation.HWND, seconds: u32) void {
 
     bufferDesc = std.mem.zeroes(sound.DSBUFFERDESC);
     bufferDesc.dwSize = @sizeOf(sound.DSBUFFERDESC);
-    const bytesPerSample: u32 = @sizeOf(i16) * 2;
     bufferDesc.dwBufferBytes = seconds * samplesPerSecond * bytesPerSample;
     bufferDesc.lpwfxFormat = &waveFormat;
 
-    var secondaryBuffer: ?*sound.IDirectSoundBuffer = undefined;
     check(directSound.CreateSoundBuffer(&bufferDesc, &secondaryBuffer, null));
 }
 
