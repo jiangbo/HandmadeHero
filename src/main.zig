@@ -80,6 +80,7 @@ fn createWindow() void {
     var newInput = gameInput[0];
     var oldInput = gameInput[1];
 
+    var gameState = game.GameState{};
     while (running) {
         while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
             _ = ui.TranslateMessage(&message);
@@ -121,7 +122,6 @@ fn createWindow() void {
             else
                 @as(f32, @floatFromInt(pad.sThumbLY)) / 32767;
 
-            std.log.debug("y: {d}", .{y});
             newController.maxY = y;
             newController.minY = y;
             newController.endY = y;
@@ -166,7 +166,7 @@ fn createWindow() void {
             .width = screenBuffer.width,
             .height = screenBuffer.height,
         };
-        game.gameUpdateAndRender(newInput, &buffer, &soundBuffer);
+        game.gameUpdateAndRender(&gameState, newInput, &buffer, &soundBuffer);
 
         if (bytesToWrite != 0)
             win32FillSoundBuffer(&soundOutput, offset, bytesToWrite, &soundBuffer);
