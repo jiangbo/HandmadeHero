@@ -1,6 +1,7 @@
 const std = @import("std");
 const win32 = @import("win32");
 const game = @import("handmade.zig");
+const input = @import("input.zig");
 
 pub const UNICODE: bool = true;
 
@@ -62,6 +63,7 @@ fn createWindow() void {
     soundOutput.latencySampleCount = samples / 15;
     const bufferSize = soundOutput.secondaryBufferSize;
 
+    win32LoadXinput();
     win32InitDSound(window, soundOutput);
     win32ClearBuffer(&soundOutput);
     const latencyBytes = soundOutput.latencySampleCount * bytes;
@@ -74,10 +76,69 @@ fn createWindow() void {
     const ui = win32.ui.windows_and_messaging;
     const hdc = win32.graphics.gdi.GetDC(window);
 
+    const gameInput: [2]input.Input = undefined;
+    var newInput = gameInput[0];
+    var oldInput = gameInput[1];
+
     while (running) {
         while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
             _ = ui.TranslateMessage(&message);
             _ = ui.DispatchMessage(&message);
+        }
+
+        for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
+            var oldController = &oldInput.controllers[index];
+            var newController = &newInput.controllers[index];
+
+            var state: xbox.XINPUT_STATE = undefined;
+            const success: u32 = @intFromEnum(win32.foundation.ERROR_SUCCESS);
+            if (success != xInputGetState(@intCast(index), &state)) {
+                continue;
+            }
+
+            const pad = &state.Gamepad;
+            // const up = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_UP;
+            // const Down = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_DOWN;
+            // const Left = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_LEFT;
+            // const Right = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_RIGHT;
+            // const Start = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_START;
+            // const Back = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_BACK;
+
+            newController.analog = true;
+            newController.startX = oldController.endX;
+            newController.startY = oldController.endY;
+
+            const x: f32 = if (pad.sThumbLX < 0)
+                @as(f32, @floatFromInt(pad.sThumbLX)) / 32768.0
+            else
+                @as(f32, @floatFromInt(pad.sThumbLX)) / 32767;
+            newController.maxX = x;
+            newController.minX = x;
+            newController.endX = x;
+
+            const y: f32 = if (pad.sThumbLY < 0)
+                @as(f32, @floatFromInt(pad.sThumbLY)) / 32768
+            else
+                @as(f32, @floatFromInt(pad.sThumbLY)) / 32767;
+
+            std.log.debug("y: {d}", .{y});
+            newController.maxY = y;
+            newController.minY = y;
+            newController.endY = y;
+
+            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.down, //
+                xbox.XINPUT_GAMEPAD_A, &newController.extend.down);
+            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.right, //
+                xbox.XINPUT_GAMEPAD_B, &newController.extend.right);
+            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.left, //
+                xbox.XINPUT_GAMEPAD_X, &newController.extend.left);
+            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.up, //
+                xbox.XINPUT_GAMEPAD_Y, &newController.extend.up);
+
+            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.leftShoulder, //
+                xbox.XINPUT_GAMEPAD_LEFT_SHOULDER, &newController.extend.leftShoulder);
+            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.rightShoulder, //
+                xbox.XINPUT_GAMEPAD_RIGHT_SHOULDER, &newController.extend.rightShoulder);
         }
 
         var playCursor: u32 = 0;
@@ -95,7 +156,7 @@ fn createWindow() void {
         }
 
         var soundBuffer = game.SoundBuffer{
-            .samplesPerSecond = soundOutput.samplesPerSecond,
+            .samplesPerSecond = @intCast(soundOutput.samplesPerSecond),
             .sampleCount = bytesToWrite / soundOutput.bytesPerSample,
             .samples = allocBuffer.ptr,
         };
@@ -105,11 +166,15 @@ fn createWindow() void {
             .width = screenBuffer.width,
             .height = screenBuffer.height,
         };
-        game.gameUpdateAndRender(&buffer, &soundBuffer);
+        game.gameUpdateAndRender(newInput, &buffer, &soundBuffer);
 
         if (bytesToWrite != 0)
             win32FillSoundBuffer(&soundOutput, offset, bytesToWrite, &soundBuffer);
         win32UpdateWindow(hdc);
+
+        const temp = newInput;
+        newInput = oldInput;
+        oldInput = temp;
 
         // const delta = timer.lap();
         // std.log.debug("{} us, fps: {}", .{
@@ -117,6 +182,32 @@ fn createWindow() void {
         //     std.time.ns_per_s / delta,
         // });
     }
+}
+
+const xbox = win32.ui.input.xbox_controller;
+var xInputGetState: *const @TypeOf(xbox.XInputGetState) = undefined;
+var xInputSetState: *const @TypeOf(xbox.XInputSetState) = undefined;
+fn win32LoadXinput() void {
+    if (loader.LoadLibraryW(win32.zig.L("xinput1_4.dll"))) |library| {
+        if (loader.GetProcAddress(library, "XInputGetState")) |address| {
+            xInputGetState = @ptrCast(address);
+        }
+
+        if (loader.GetProcAddress(library, "XInputSetState")) |address| {
+            xInputSetState = @ptrCast(address);
+        }
+    }
+}
+
+fn win32ProcessXInputDigitalButton(
+    xInputButtonState: u32,
+    oldState: *input.ButtonState,
+    buttonBit: u32,
+    newState: *input.ButtonState,
+) void {
+    newState.endedDown = ((xInputButtonState & buttonBit) == buttonBit);
+    const count: u32 = if (oldState.endedDown == newState.endedDown) 0 else 1;
+    newState.halfTransitionCount = count;
 }
 
 fn check(result: win32.foundation.HRESULT) void {

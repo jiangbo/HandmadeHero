@@ -1,4 +1,5 @@
 const std = @import("std");
+const input = @import("input.zig");
 
 pub const Color = extern struct { b: u8 = 0, g: u8 = 0, r: u8 = 0, a: u8 = 0 };
 
@@ -9,22 +10,34 @@ pub const ScreenBuffer = struct {
 };
 
 pub const SoundBuffer = struct {
-    samplesPerSecond: u32,
+    samplesPerSecond: i32,
     sampleCount: u32,
     samples: [*]i16,
 };
 
-pub fn gameUpdateAndRender(screenBuffer: *ScreenBuffer, soundBuffer: *SoundBuffer) void {
-    const toneHz = 256;
+var blueOffset: i32 = 0;
+var greenOffset: i32 = 0;
+var toneHz: f32 = 256;
+
+pub fn gameUpdateAndRender(
+    inputs: input.Input,
+    screenBuffer: *ScreenBuffer,
+    soundBuffer: *SoundBuffer,
+) void {
+    const input0 = inputs.controllers[0];
+    if (input0.analog) {
+        blueOffset += @as(i32, @intFromFloat(4 * (input0.startX)));
+        toneHz = 256 + 128 * input0.endY;
+    }
+
     outputSound(soundBuffer, toneHz);
     renderWeirdGradient(screenBuffer, 0, 0);
 }
 
 var tSine: f32 = 0;
 const toneVolume: u32 = 3000;
-fn outputSound(buffer: *SoundBuffer, toneHz: u32) void {
-    const wavePeriod: f32 = @floatFromInt(buffer.samplesPerSecond / toneHz);
-
+fn outputSound(buffer: *SoundBuffer, hz: f32) void {
+    const samplePerSecond: f32 = @floatFromInt(buffer.samplesPerSecond);
     var sampleOut = buffer.samples;
     for (0..@intCast(buffer.sampleCount)) |_| {
         {
@@ -33,7 +46,7 @@ fn outputSound(buffer: *SoundBuffer, toneHz: u32) void {
             sampleOut[1] = sampleValue;
             sampleOut += 2;
 
-            tSine += (2.0 * std.math.pi) / wavePeriod;
+            tSine += (2.0 * std.math.pi) / (samplePerSecond / hz);
         }
     }
 }
