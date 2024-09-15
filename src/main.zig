@@ -61,11 +61,15 @@ fn createWindow() void {
     soundOutput.secondaryBufferSize = samples * soundOutput.bytesPerSample;
     soundOutput.wavePeriod = @floatFromInt(samples / soundOutput.toneHz);
     soundOutput.latencySampleCount = samples / 15;
+    const bufferSize = soundOutput.secondaryBufferSize;
 
     win32InitDSound(window, soundOutput);
+    win32ClearBuffer(&soundOutput);
     const latencyBytes = soundOutput.latencySampleCount * bytes;
-    win32FillSoundBuffer(&soundOutput, 0, latencyBytes);
     check(secondaryBuffer.?.Play(0, 0, sound.DSBPLAY_LOOPING));
+
+    const allocBuffer = allocator.alloc(i16, bufferSize) catch unreachable;
+    defer allocator.free(allocBuffer);
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
@@ -78,19 +82,12 @@ fn createWindow() void {
             _ = ui.DispatchMessage(&message);
         }
 
-        var buffer: game.ScreenBuffer = .{
-            .memory = screenBuffer.memory,
-            .width = screenBuffer.width,
-            .height = screenBuffer.height,
-        };
-        game.gameUpdateAndRender(&buffer, offsetX);
         offsetX += 1;
 
-        var playCursor: u32 = undefined;
-        var writeCursor: u32 = undefined;
+        var playCursor: u32 = 0;
+        var writeCursor: u32 = 0;
         check(secondaryBuffer.?.GetCurrentPosition(&playCursor, &writeCursor));
 
-        const bufferSize = soundOutput.secondaryBufferSize;
         const targetCursor = (playCursor + latencyBytes) % bufferSize;
         const offset: u32 = (soundOutput.runningSampleIndex * bytes) % bufferSize;
         var bytesToWrite: u32 = undefined;
@@ -101,7 +98,21 @@ fn createWindow() void {
             bytesToWrite = targetCursor - offset;
         }
 
-        if (bytesToWrite != 0) win32FillSoundBuffer(&soundOutput, offset, bytesToWrite);
+        var soundBuffer = game.SoundBuffer{
+            .samplesPerSecond = soundOutput.samplesPerSecond,
+            .sampleCount = bytesToWrite / soundOutput.bytesPerSample,
+            .samples = allocBuffer.ptr,
+        };
+
+        var buffer: game.ScreenBuffer = .{
+            .memory = screenBuffer.memory,
+            .width = screenBuffer.width,
+            .height = screenBuffer.height,
+        };
+        game.gameUpdateAndRender(&buffer, offsetX, &soundBuffer, soundOutput.toneHz);
+
+        if (bytesToWrite != 0)
+            win32FillSoundBuffer(&soundOutput, offset, bytesToWrite, &soundBuffer);
         win32UpdateWindow(hdc);
 
         // const delta = timer.lap();
@@ -166,7 +177,12 @@ fn win32InitDSound(window: ?win32.foundation.HWND, output: Win32SoundOutput) voi
     check(directSound.CreateSoundBuffer(&bufferDesc, &secondaryBuffer, null));
 }
 
-fn win32FillSoundBuffer(soundOutput: *Win32SoundOutput, offset: u32, bytesToWrite: u32) void {
+fn win32FillSoundBuffer(
+    soundOutput: *Win32SoundOutput,
+    offset: u32,
+    bytesToWrite: u32,
+    soundBuffer: *game.SoundBuffer,
+) void {
     var region1: [*]i16 = undefined;
     var region1Size: u32 = 0;
     var region2: [*]i16 = undefined;
@@ -175,31 +191,34 @@ fn win32FillSoundBuffer(soundOutput: *Win32SoundOutput, offset: u32, bytesToWrit
     check(secondaryBuffer.?.Lock(offset, bytesToWrite, //
         @ptrCast(&region1), &region1Size, @ptrCast(&region2), &region2Size, 0));
 
-    var sampleOut = region1;
+    var source = soundBuffer.samples[0 .. region1Size / 2];
+    @memcpy(region1[0 .. region1Size / 2], source);
     const region1SampleCount = region1Size / soundOutput.bytesPerSample;
     for (0..@intCast(region1SampleCount)) |_| {
-        const temp = @sin(soundOutput.tSine) * soundOutput.toneVolume;
-        const sampleValue: i16 = @intFromFloat(temp);
-
-        sampleOut[0] = sampleValue;
-        sampleOut[1] = sampleValue;
-        sampleOut += 2;
-        soundOutput.tSine += (2.0 * std.math.pi) / soundOutput.wavePeriod;
         soundOutput.runningSampleIndex += 1;
     }
 
-    sampleOut = region2;
+    source = soundBuffer.samples[region1Size / 2 ..][0 .. region2Size / 2];
+    @memcpy(region2[0 .. region2Size / 2], source);
     const region2SampleCount = region2Size / soundOutput.bytesPerSample;
     for (0..@intCast(region2SampleCount)) |_| {
-        const temp = @sin(soundOutput.tSine) * soundOutput.toneVolume;
-        const sampleValue: i16 = @intFromFloat(temp);
-
-        sampleOut[0] = sampleValue;
-        sampleOut[1] = sampleValue;
-        sampleOut += 2;
-        soundOutput.tSine += (2.0 * std.math.pi) / soundOutput.wavePeriod;
         soundOutput.runningSampleIndex += 1;
     }
+    check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
+}
+
+fn win32ClearBuffer(soundOutput: *Win32SoundOutput) void {
+    var region1: [*]i16 = undefined;
+    var region1Size: u32 = 0;
+    var region2: [*]i16 = undefined;
+    var region2Size: u32 = 0;
+
+    check(secondaryBuffer.?.Lock(0, soundOutput.secondaryBufferSize, //
+        @ptrCast(&region1), &region1Size, @ptrCast(&region2), &region2Size, 0));
+
+    @memset(region1[0 .. region1Size / 2], 0);
+    @memset(region2[0 .. region2Size / 2], 0);
+
     check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
 }
 

@@ -8,8 +8,38 @@ pub const ScreenBuffer = struct {
     height: i32,
 };
 
-pub fn gameUpdateAndRender(buffer: *ScreenBuffer, offsetX: usize) void {
-    renderWeirdGradient(buffer, offsetX, 0);
+pub const SoundBuffer = struct {
+    samplesPerSecond: u32,
+    sampleCount: u32,
+    samples: [*]i16,
+};
+
+pub fn gameUpdateAndRender(
+    screenBuffer: *ScreenBuffer,
+    offsetX: usize,
+    soundBuffer: *SoundBuffer,
+    toneHz: u32,
+) void {
+    outputSound(soundBuffer, toneHz);
+    renderWeirdGradient(screenBuffer, offsetX, 0);
+}
+
+var tSine: f32 = 0;
+const toneVolume: u32 = 3000;
+fn outputSound(buffer: *SoundBuffer, toneHz: u32) void {
+    const wavePeriod: f32 = @floatFromInt(buffer.samplesPerSecond / toneHz);
+
+    var sampleOut = buffer.samples;
+    for (0..@intCast(buffer.sampleCount)) |_| {
+        {
+            const sampleValue: i16 = @intFromFloat(@sin(tSine) * toneVolume);
+            sampleOut[0] = sampleValue;
+            sampleOut[1] = sampleValue;
+            sampleOut += 2;
+
+            tSine += (2.0 * std.math.pi) / wavePeriod;
+        }
+    }
 }
 
 fn renderWeirdGradient(buffer: *ScreenBuffer, offsetX: usize, offsetY: usize) void {
