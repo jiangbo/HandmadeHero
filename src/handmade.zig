@@ -14,14 +14,10 @@ pub const SoundBuffer = struct {
     samples: [*]i16,
 };
 
-pub fn gameUpdateAndRender(
-    screenBuffer: *ScreenBuffer,
-    offsetX: usize,
-    soundBuffer: *SoundBuffer,
-    toneHz: u32,
-) void {
+pub fn gameUpdateAndRender(screenBuffer: *ScreenBuffer, soundBuffer: *SoundBuffer) void {
+    const toneHz = 256;
     outputSound(soundBuffer, toneHz);
-    renderWeirdGradient(screenBuffer, offsetX, 0);
+    renderWeirdGradient(screenBuffer, 0, 0);
 }
 
 var tSine: f32 = 0;

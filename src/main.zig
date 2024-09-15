@@ -59,7 +59,6 @@ fn createWindow() void {
     const samples = soundOutput.samplesPerSecond;
     const bytes = soundOutput.bytesPerSample;
     soundOutput.secondaryBufferSize = samples * soundOutput.bytesPerSample;
-    soundOutput.wavePeriod = @floatFromInt(samples / soundOutput.toneHz);
     soundOutput.latencySampleCount = samples / 15;
     const bufferSize = soundOutput.secondaryBufferSize;
 
@@ -73,7 +72,6 @@ fn createWindow() void {
 
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
-    var offsetX: usize = 0;
     const hdc = win32.graphics.gdi.GetDC(window);
 
     while (running) {
@@ -81,8 +79,6 @@ fn createWindow() void {
             _ = ui.TranslateMessage(&message);
             _ = ui.DispatchMessage(&message);
         }
-
-        offsetX += 1;
 
         var playCursor: u32 = 0;
         var writeCursor: u32 = 0;
@@ -109,7 +105,7 @@ fn createWindow() void {
             .width = screenBuffer.width,
             .height = screenBuffer.height,
         };
-        game.gameUpdateAndRender(&buffer, offsetX, &soundBuffer, soundOutput.toneHz);
+        game.gameUpdateAndRender(&buffer, &soundBuffer);
 
         if (bytesToWrite != 0)
             win32FillSoundBuffer(&soundOutput, offset, bytesToWrite, &soundBuffer);
@@ -132,10 +128,6 @@ const Win32SoundOutput = struct {
     bytesPerSample: u32 = @sizeOf(i16) * 2,
     secondaryBufferSize: u32 = 0,
     runningSampleIndex: u32 = 0,
-    toneHz: u32 = 256,
-    toneVolume: f32 = 3000,
-    wavePeriod: f32 = 0,
-    tSine: f32 = 0,
     latencySampleCount: u32 = 0,
 };
 
