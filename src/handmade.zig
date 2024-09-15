@@ -25,6 +25,17 @@ var blueOffset: i32 = 0;
 var greenOffset: i32 = 0;
 var toneHz: f32 = 256;
 
+pub fn readEntireFile(allocator: std.mem.Allocator, filename: []const u8) []const u8 {
+    const file = std.fs.cwd().openFile(filename, .{}) catch unreachable;
+    defer file.close();
+    return file.readToEndAlloc(allocator, std.math.maxInt(usize)) catch unreachable;
+}
+pub fn writeEntireFile(filename: []const u8, data: []const u8) void {
+    const file = std.fs.cwd().createFile(filename, .{}) catch unreachable;
+    defer file.close();
+    file.writeAll(data) catch unreachable;
+}
+
 pub fn gameUpdateAndRender(
     state: *GameState,
     inputs: input.Input,
@@ -41,7 +52,6 @@ pub fn gameUpdateAndRender(
     outputSound(soundBuffer, state.toneHz);
     renderWeirdGradient(screenBuffer, state.blueOffset, state.greenOffset);
 }
-
 var tSine: f32 = 0;
 const toneVolume: u32 = 3000;
 fn outputSound(buffer: *SoundBuffer, hz: f32) void {
@@ -53,7 +63,6 @@ fn outputSound(buffer: *SoundBuffer, hz: f32) void {
             sampleOut[0] = sampleValue;
             sampleOut[1] = sampleValue;
             sampleOut += 2;
-
             tSine += (2.0 * std.math.pi) / (samplePerSecond / hz);
         }
     }
