@@ -1,5 +1,6 @@
 const std = @import("std");
 const win32 = @import("win32");
+const game = @import("handmade.zig");
 
 pub const UNICODE: bool = true;
 
@@ -10,7 +11,7 @@ const HEIGHT: i32 = 720;
 var running: bool = true;
 var windowWidth: i32 = 0;
 var windowHeight: i32 = 0;
-var screenBuffer: win32ScreenBuffer = undefined;
+var screenBuffer: win32ScreenBuffer = .{};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -23,10 +24,9 @@ pub fn main() !void {
 
 const win32ScreenBuffer = struct {
     info: win32.graphics.gdi.BITMAPINFO = undefined,
-    memory: ?[]Color = null,
+    memory: ?[]game.Color = null,
     width: i32 = WIDTH,
     height: i32 = HEIGHT,
-    pitch: i32 = 0,
 
     pub fn deinit(self: *win32ScreenBuffer) void {
         if (self.memory) |memory| allocator.free(memory);
@@ -72,14 +72,18 @@ fn createWindow() void {
     var offsetX: usize = 0;
     const hdc = win32.graphics.gdi.GetDC(window);
 
-    var timer = std.time.Timer.start() catch unreachable;
     while (running) {
         while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
             _ = ui.TranslateMessage(&message);
             _ = ui.DispatchMessage(&message);
         }
 
-        renderWeirdGradient(offsetX, 0);
+        var buffer: game.ScreenBuffer = .{
+            .memory = screenBuffer.memory,
+            .width = screenBuffer.width,
+            .height = screenBuffer.height,
+        };
+        game.gameUpdateAndRender(&buffer, offsetX);
         offsetX += 1;
 
         var playCursor: u32 = undefined;
@@ -100,11 +104,11 @@ fn createWindow() void {
         if (bytesToWrite != 0) win32FillSoundBuffer(&soundOutput, offset, bytesToWrite);
         win32UpdateWindow(hdc);
 
-        const delta = timer.lap();
-        std.log.debug("{} us, fps: {}", .{
-            delta / std.time.ns_per_us,
-            std.time.ns_per_s / delta,
-        });
+        // const delta = timer.lap();
+        // std.log.debug("{} us, fps: {}", .{
+        //     delta / std.time.ns_per_us,
+        //     std.time.ns_per_s / delta,
+        // });
     }
 }
 
@@ -199,8 +203,6 @@ fn win32FillSoundBuffer(soundOutput: *Win32SoundOutput, offset: u32, bytesToWrit
     check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
 }
 
-const Color = extern struct { b: u8 = 0, g: u8 = 0, r: u8 = 0, a: u8 = 0 };
-
 fn createDIBSection() void {
     screenBuffer.deinit();
 
@@ -213,20 +215,8 @@ fn createDIBSection() void {
     screenBuffer.info.bmiHeader.biBitCount = 32;
     screenBuffer.info.bmiHeader.biCompression = win32.graphics.gdi.BI_RGB;
 
-    const size: usize = @intCast(WIDTH * HEIGHT * @sizeOf(Color));
-    screenBuffer.memory = allocator.alloc(Color, size) catch unreachable;
-}
-
-fn renderWeirdGradient(offsetX: usize, offsetY: usize) void {
-    const w: usize = @intCast(WIDTH);
-    for (0..@as(usize, @intCast(HEIGHT))) |y| {
-        for (0..w) |x| {
-            screenBuffer.memory.?[x + y * w] = .{
-                .b = @truncate(x + offsetX),
-                .g = @truncate(y + offsetY),
-            };
-        }
-    }
+    const size: usize = @intCast(WIDTH * HEIGHT * @sizeOf(game.Color));
+    screenBuffer.memory = allocator.alloc(game.Color, size) catch unreachable;
 }
 
 fn win32UpdateWindow(hdc: ?win32.graphics.gdi.HDC) void {
