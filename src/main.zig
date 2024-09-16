@@ -80,62 +80,86 @@ fn createWindow() void {
 
     var gameState = game.GameState{};
     while (running) {
-        const keyboard = &newInput.controllers[0];
-        keyboard.* = std.mem.zeroes(input.ControllerInput);
-        win32ProcessPendingMessages(keyboard);
+        const oldKeyboard = &oldInput.controllers[0];
+        const newKeyboard = &newInput.controllers[0];
+        newKeyboard.* = std.mem.zeroes(input.ControllerInput);
+        newKeyboard.connected = true;
+
+        newKeyboard.copyEndedDown(oldKeyboard);
+        win32ProcessPendingMessages(newKeyboard);
 
         for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
-            var oldController = &oldInput.controllers[index];
-            var newController = &newInput.controllers[index];
+            const oldController = &oldInput.controllers[index + 1];
+            var newController = &newInput.controllers[index + 1];
 
             var state: xbox.XINPUT_STATE = undefined;
             const success: u32 = @intFromEnum(win32.foundation.ERROR_SUCCESS);
-            if (success != xInputGetState(@intCast(index), &state)) {
-                continue;
+            if (success != xInputGetState(@intCast(index), &state)) continue;
+
+            newController.connected = true;
+            const pad = &state.Gamepad;
+
+            const deadZone: f32 = @floatFromInt(xbox.XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+            const thumbLX: f32 = @floatFromInt(pad.sThumbLX);
+            const thumbLY: f32 = @floatFromInt(pad.sThumbLY);
+            newController.stickAverageX = win32ProcessStick(thumbLX, deadZone);
+            newController.stickAverageY = win32ProcessStick(thumbLY, deadZone);
+
+            if (newController.stickAverageX != 0.0 or newController.stickAverageY != 0.0) {
+                newController.analog = true;
             }
 
-            const pad = &state.Gamepad;
-            // const up = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_UP;
-            // const Down = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_DOWN;
-            // const Left = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_LEFT;
-            // const Right = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_RIGHT;
-            // const Start = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_START;
-            // const Back = state.Gamepad.wButtons & xbox.XINPUT_GAMEPAD_BACK;
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_UP != 0) {
+                newController.stickAverageY = 1.0;
+                newController.analog = false;
+            }
 
-            newController.analog = true;
-            newController.startX = oldController.endX;
-            newController.startY = oldController.endY;
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_DOWN != 0) {
+                newController.stickAverageY = -1.0;
+                newController.analog = false;
+            }
 
-            const x: f32 = if (pad.sThumbLX < 0)
-                @as(f32, @floatFromInt(pad.sThumbLX)) / 32768.0
-            else
-                @as(f32, @floatFromInt(pad.sThumbLX)) / 32767;
-            newController.maxX = x;
-            newController.minX = x;
-            newController.endX = x;
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_LEFT != 0) {
+                newController.stickAverageX = -1.0;
+                newController.analog = false;
+            }
 
-            const y: f32 = if (pad.sThumbLY < 0)
-                @as(f32, @floatFromInt(pad.sThumbLY)) / 32768
-            else
-                @as(f32, @floatFromInt(pad.sThumbLY)) / 32767;
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_RIGHT != 0) {
+                newController.stickAverageX = 1.0;
+                newController.analog = false;
+            }
 
-            newController.maxY = y;
-            newController.minY = y;
-            newController.endY = y;
+            const threshold: f32 = 0.5;
+            var value: u32 = if (newController.stickAverageX < -threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveLeft, 1, &newController.moveLeft);
 
-            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.down, //
-                xbox.XINPUT_GAMEPAD_A, &newController.extend.down);
-            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.right, //
-                xbox.XINPUT_GAMEPAD_B, &newController.extend.right);
-            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.left, //
-                xbox.XINPUT_GAMEPAD_X, &newController.extend.left);
-            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.up, //
-                xbox.XINPUT_GAMEPAD_Y, &newController.extend.up);
+            value = if (newController.stickAverageX > threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveRight, 1, &newController.moveRight);
 
-            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.leftShoulder, //
-                xbox.XINPUT_GAMEPAD_LEFT_SHOULDER, &newController.extend.leftShoulder);
-            win32ProcessXInputDigitalButton(pad.wButtons, &oldController.extend.rightShoulder, //
-                xbox.XINPUT_GAMEPAD_RIGHT_SHOULDER, &newController.extend.rightShoulder);
+            value = if (newController.stickAverageY < -threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveDown, 1, &newController.moveDown);
+
+            value = if (newController.stickAverageY > threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveUp, 1, &newController.moveUp);
+
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionDown, //
+                xbox.XINPUT_GAMEPAD_A, &newController.actionDown);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionRight, //
+                xbox.XINPUT_GAMEPAD_B, &newController.actionRight);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionLeft, //
+                xbox.XINPUT_GAMEPAD_X, &newController.actionLeft);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionUp, //
+                xbox.XINPUT_GAMEPAD_Y, &newController.actionUp);
+
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.leftShoulder, //
+                xbox.XINPUT_GAMEPAD_LEFT_SHOULDER, &newController.leftShoulder);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.rightShoulder, //
+                xbox.XINPUT_GAMEPAD_RIGHT_SHOULDER, &newController.rightShoulder);
+
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.start, //
+                xbox.XINPUT_GAMEPAD_START, &newController.start);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.back, //
+                xbox.XINPUT_GAMEPAD_BACK, &newController.back);
         }
 
         var playCursor: u32 = 0;
@@ -169,9 +193,7 @@ fn createWindow() void {
             win32FillSoundBuffer(&soundOutput, offset, bytesToWrite, &soundBuffer);
         win32UpdateWindow(hdc);
 
-        const temp = newInput;
-        newInput = oldInput;
-        oldInput = temp;
+        std.mem.swap(input.Input, &oldInput, &newInput);
 
         // const delta = timer.lap();
         // std.log.debug("{} us, fps: {}", .{
@@ -181,12 +203,33 @@ fn createWindow() void {
     }
 }
 
-fn win32ProcessKeyboardMessage(newState: *input.ButtonState, isDown: bool) void {
+fn win32ProcessKeyboard(newState: *input.ButtonState, isDown: bool) void {
     newState.endedDown = isDown;
     newState.halfTransitionCount += 1;
 }
 
-fn win32ProcessPendingMessages(_: *input.ControllerInput) void {
+fn win32ProcessDigital(
+    buttonState: u32,
+    oldState: *input.ButtonState,
+    buttonBit: u32,
+    newState: *input.ButtonState,
+) void {
+    newState.endedDown = ((buttonState & buttonBit) == buttonBit);
+    newState.halfTransitionCount = if (oldState.endedDown != newState.endedDown) 1 else 0;
+}
+
+fn win32ProcessStick(value: f32, deadZoneThreshold: f32) f32 {
+    var result: f32 = 0;
+    if (value < -deadZoneThreshold) {
+        result = (value + deadZoneThreshold) / (32768.0 - deadZoneThreshold);
+    } else if (value > deadZoneThreshold) {
+        result = (value - deadZoneThreshold) / (32767.0 - deadZoneThreshold);
+    }
+
+    return result;
+}
+
+fn win32ProcessPendingMessages(keyboard: *input.ControllerInput) void {
     var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
     while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
@@ -195,8 +238,28 @@ fn win32ProcessPendingMessages(_: *input.ControllerInput) void {
             ui.WM_KEYDOWN, ui.WM_KEYUP, ui.WM_SYSKEYDOWN, ui.WM_SYSKEYUP => {
                 const wasDown: bool = ((message.lParam & (1 << 30)) != 0);
                 const isDown: bool = ((message.lParam & (1 << 31)) == 0);
-                if (wasDown != isDown) {
-                    if (message.wParam == 'W') std.log.debug("W down", .{});
+
+                if (wasDown == isDown) continue;
+                switch (message.wParam) {
+                    'W' => win32ProcessKeyboard(&keyboard.moveUp, isDown),
+                    'A' => win32ProcessKeyboard(&keyboard.moveLeft, isDown),
+                    'S' => win32ProcessKeyboard(&keyboard.moveDown, isDown),
+                    'D' => win32ProcessKeyboard(&keyboard.moveRight, isDown),
+                    'Q' => win32ProcessKeyboard(&keyboard.leftShoulder, isDown),
+                    'E' => win32ProcessKeyboard(&keyboard.rightShoulder, isDown),
+                    else => {
+                        const key = win32.ui.input.keyboard_and_mouse;
+                        const wParam: key.VIRTUAL_KEY = @enumFromInt(message.wParam);
+                        switch (wParam) {
+                            .UP => win32ProcessKeyboard(&keyboard.actionUp, isDown),
+                            .LEFT => win32ProcessKeyboard(&keyboard.actionLeft, isDown),
+                            .DOWN => win32ProcessKeyboard(&keyboard.actionDown, isDown),
+                            .RIGHT => win32ProcessKeyboard(&keyboard.actionRight, isDown),
+                            .ESCAPE => win32ProcessKeyboard(&keyboard.start, isDown),
+                            .SPACE => win32ProcessKeyboard(&keyboard.back, isDown),
+                            else => {},
+                        }
+                    },
                 }
             },
             else => {
@@ -224,7 +287,7 @@ fn win32LoadXinput() void {
 
 fn win32ProcessXInputDigitalButton(
     xInputButtonState: u32,
-    oldState: *input.ButtonState,
+    oldState: input.ButtonState,
     buttonBit: u32,
     newState: *input.ButtonState,
 ) void {

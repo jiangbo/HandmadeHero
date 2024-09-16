@@ -6,26 +6,50 @@ pub const ButtonState = struct {
 };
 
 pub const ControllerInput = struct {
+    connected: bool = false,
     analog: bool = false,
-    startX: f32 = 0.0,
-    startY: f32 = 0.0,
-    minX: f32 = 0.0,
-    minY: f32 = 0.0,
-    maxX: f32 = 0.0,
-    maxY: f32 = 0.0,
-    endX: f32 = 0.0,
-    endY: f32 = 0.0,
 
-    extend: struct {
-        up: ButtonState,
-        down: ButtonState,
-        left: ButtonState,
-        right: ButtonState,
-        leftShoulder: ButtonState,
-        rightShoulder: ButtonState,
-    },
+    stickAverageX: f32 = 0,
+    stickAverageY: f32 = 0,
+
+    moveUp: ButtonState,
+    moveDown: ButtonState,
+    moveLeft: ButtonState,
+    moveRight: ButtonState,
+
+    actionUp: ButtonState,
+    actionDown: ButtonState,
+    actionLeft: ButtonState,
+    actionRight: ButtonState,
+
+    leftShoulder: ButtonState,
+    rightShoulder: ButtonState,
+
+    back: ButtonState,
+    start: ButtonState,
+
+    terminator: ButtonState,
+
+    pub fn copyEndedDown(self: *ControllerInput, old: *ControllerInput) void {
+        self.moveUp.endedDown = old.moveUp.endedDown;
+        self.moveDown.endedDown = old.moveDown.endedDown;
+        self.moveLeft.endedDown = old.moveLeft.endedDown;
+        self.moveRight.endedDown = old.moveRight.endedDown;
+
+        self.actionUp.endedDown = old.actionUp.endedDown;
+        self.actionDown.endedDown = old.actionDown.endedDown;
+        self.actionLeft.endedDown = old.actionLeft.endedDown;
+        self.actionRight.endedDown = old.actionRight.endedDown;
+
+        self.leftShoulder.endedDown = old.leftShoulder.endedDown;
+        self.rightShoulder.endedDown = old.rightShoulder.endedDown;
+
+        self.back.endedDown = old.back.endedDown;
+        self.start.endedDown = old.start.endedDown;
+        self.terminator.endedDown = old.terminator.endedDown;
+    }
 };
 
 pub const Input = struct {
-    controllers: [4]ControllerInput = undefined,
+    controllers: [5]ControllerInput = undefined,
 };

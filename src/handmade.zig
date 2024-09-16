@@ -42,12 +42,17 @@ pub fn gameUpdateAndRender(
     screenBuffer: *ScreenBuffer,
     soundBuffer: *SoundBuffer,
 ) void {
-    const input0 = inputs.controllers[0];
-    if (input0.analog) {
-        state.blueOffset += @as(i32, @intFromFloat(4 * input0.startX));
-        state.toneHz = 256 + 128 * input0.endY;
+    for (inputs.controllers) |controller| {
+        if (controller.analog) {
+            state.blueOffset += @as(i32, @intFromFloat(4 * controller.stickAverageX));
+            state.toneHz = 256 + 128 * controller.stickAverageY;
+        } else {
+            if (controller.moveLeft.endedDown) state.blueOffset -= 1;
+            if (controller.moveRight.endedDown) state.blueOffset += 1;
+        }
+
+        if (controller.actionDown.endedDown) state.greenOffset += 1;
     }
-    if (input0.extend.down.endedDown) state.greenOffset += 1;
 
     outputSound(soundBuffer, state.toneHz);
     renderWeirdGradient(screenBuffer, state.blueOffset, state.greenOffset);
@@ -70,14 +75,12 @@ fn outputSound(buffer: *SoundBuffer, hz: f32) void {
 
 fn renderWeirdGradient(buffer: *ScreenBuffer, offsetX: i32, offsetY: i32) void {
     const w: usize = @intCast(buffer.width);
-    const ox: usize = @intCast(@abs(offsetX));
-    const oy: usize = @intCast(@abs(offsetY));
 
     for (0..@as(usize, @intCast(buffer.height))) |y| {
         for (0..w) |x| {
             buffer.memory.?[x + y * w] = .{
-                .b = @truncate(x + ox),
-                .g = @truncate(y + oy),
+                .b = @truncate(x + @as(u32, @bitCast(offsetX))),
+                .g = @truncate(y + @as(u32, @bitCast(offsetY))),
             };
         }
     }
