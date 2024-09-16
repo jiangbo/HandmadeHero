@@ -72,8 +72,6 @@ fn createWindow() void {
     const allocBuffer = allocator.alloc(i16, bufferSize) catch unreachable;
     defer allocator.free(allocBuffer);
 
-    var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
-    const ui = win32.ui.windows_and_messaging;
     const hdc = win32.graphics.gdi.GetDC(window);
 
     const gameInput: [2]input.Input = undefined;
@@ -82,10 +80,9 @@ fn createWindow() void {
 
     var gameState = game.GameState{};
     while (running) {
-        while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
-            _ = ui.TranslateMessage(&message);
-            _ = ui.DispatchMessage(&message);
-        }
+        const keyboard = &newInput.controllers[0];
+        keyboard.* = std.mem.zeroes(input.ControllerInput);
+        win32ProcessPendingMessages(keyboard);
 
         for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
             var oldController = &oldInput.controllers[index];
@@ -181,6 +178,32 @@ fn createWindow() void {
         //     delta / std.time.ns_per_us,
         //     std.time.ns_per_s / delta,
         // });
+    }
+}
+
+fn win32ProcessKeyboardMessage(newState: *input.ButtonState, isDown: bool) void {
+    newState.endedDown = isDown;
+    newState.halfTransitionCount += 1;
+}
+
+fn win32ProcessPendingMessages(_: *input.ControllerInput) void {
+    var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
+    const ui = win32.ui.windows_and_messaging;
+    while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
+        switch (message.message) {
+            ui.WM_QUIT => running = false,
+            ui.WM_KEYDOWN, ui.WM_KEYUP, ui.WM_SYSKEYDOWN, ui.WM_SYSKEYUP => {
+                const wasDown: bool = ((message.lParam & (1 << 30)) != 0);
+                const isDown: bool = ((message.lParam & (1 << 31)) == 0);
+                if (wasDown != isDown) {
+                    if (message.wParam == 'W') std.log.debug("W down", .{});
+                }
+            },
+            else => {
+                _ = ui.TranslateMessage(&message);
+                _ = ui.DispatchMessage(&message);
+            },
+        }
     }
 }
 
@@ -344,22 +367,6 @@ pub fn mainWindowCallback(
             _ = win32.ui.windows_and_messaging.GetClientRect(window, &rect);
             windowWidth = rect.right - rect.left;
             windowHeight = rect.bottom - rect.top;
-        },
-        win32.ui.windows_and_messaging.WM_KEYDOWN,
-        win32.ui.windows_and_messaging.WM_KEYUP,
-        win32.ui.windows_and_messaging.WM_SYSKEYDOWN,
-        win32.ui.windows_and_messaging.WM_SYSKEYUP,
-        => {
-            // if (wParam == @intFromEnum(win32.everything.VK_W))
-            //     std.log.debug("W pressed", .{});
-
-            if (wParam == 'W') std.log.debug("W pressed", .{});
-
-            const wasDown: bool = ((lParam & (1 << 30)) != 0);
-            const isDown: bool = ((lParam & (1 << 31)) == 0);
-            if (wasDown != isDown) {
-                if (wParam == 'W') std.log.debug("W down", .{});
-            }
         },
         win32.ui.windows_and_messaging.WM_CLOSE => running = false,
         win32.ui.windows_and_messaging.WM_DESTROY => running = false,
