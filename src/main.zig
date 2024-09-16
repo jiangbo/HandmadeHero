@@ -53,6 +53,10 @@ fn createWindow() void {
         style, default, default, WIDTH, HEIGHT, //
         null, null, class.hInstance, null);
 
+    const monitorRefreshHz: u32 = 60;
+    const gameUpdateHz: u32 = monitorRefreshHz / 2;
+    const targetSecondsPerFrame: u64 = std.time.ns_per_s / gameUpdateHz;
+
     if (window == null) win32ErrorPanic();
     createDIBSection();
 
@@ -78,6 +82,8 @@ fn createWindow() void {
     var newInput = gameInput[0];
     var oldInput = gameInput[1];
 
+    _ = win32.media.timeBeginPeriod(1);
+    var timer: std.time.Timer = std.time.Timer.start() catch unreachable;
     var gameState = game.GameState{};
     while (running) {
         const oldKeyboard = &oldInput.controllers[0];
@@ -191,15 +197,18 @@ fn createWindow() void {
 
         if (bytesToWrite != 0)
             win32FillSoundBuffer(&soundOutput, offset, bytesToWrite, &soundBuffer);
+
         win32UpdateWindow(hdc);
 
         std.mem.swap(input.Input, &oldInput, &newInput);
 
-        // const delta = timer.lap();
-        // std.log.debug("{} us, fps: {}", .{
-        //     delta / std.time.ns_per_us,
-        //     std.time.ns_per_s / delta,
-        // });
+        const workTime = timer.read();
+        std.log.debug("work time: {}", .{workTime});
+
+        std.time.sleep(targetSecondsPerFrame -| workTime);
+        const delta = timer.lap();
+        std.log.debug("frame time: {}, fps: {}", .{ delta, std.time.ns_per_s / delta });
+        timer.reset();
     }
 }
 
