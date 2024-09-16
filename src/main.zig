@@ -53,6 +53,7 @@ fn createWindow() void {
         style, default, default, WIDTH, HEIGHT, //
         null, null, class.hInstance, null);
 
+    const framesOfAudioLatency: u32 = 3;
     const monitorRefreshHz: u32 = 60;
     const gameUpdateHz: u32 = monitorRefreshHz / 2;
     const targetSecondsPerFrame: u64 = std.time.ns_per_s / gameUpdateHz;
@@ -63,14 +64,13 @@ fn createWindow() void {
     var soundOutput = Win32SoundOutput{};
     const samples = soundOutput.samplesPerSecond;
     const bytes = soundOutput.bytesPerSample;
-    soundOutput.secondaryBufferSize = samples * soundOutput.bytesPerSample;
-    soundOutput.latencySampleCount = samples / 15;
+    soundOutput.secondaryBufferSize = samples * bytes;
+    soundOutput.latencySampleCount = framesOfAudioLatency * (samples / gameUpdateHz);
     const bufferSize = soundOutput.secondaryBufferSize;
 
     win32LoadXinput();
     win32InitDSound(window, soundOutput);
     win32ClearBuffer(&soundOutput);
-    const latencyBytes = soundOutput.latencySampleCount * bytes;
     check(secondaryBuffer.?.Play(0, 0, sound.DSBPLAY_LOOPING));
 
     const allocBuffer = allocator.alloc(i16, bufferSize) catch unreachable;
@@ -85,6 +85,14 @@ fn createWindow() void {
     _ = win32.media.timeBeginPeriod(1);
     var timer: std.time.Timer = std.time.Timer.start() catch unreachable;
     var gameState = game.GameState{};
+
+    var debugTimeMarkerIndex: u32 = 0;
+    var debugTimeMarkers: [gameUpdateHz / 2]Win32TimeMarker = undefined;
+    debugTimeMarkers = std.mem.zeroes(@TypeOf(debugTimeMarkers));
+
+    var lastPlayCursor: u32 = 0;
+    var soundIsValid = false;
+
     while (running) {
         const oldKeyboard = &oldInput.controllers[0];
         const newKeyboard = &newInput.controllers[0];
@@ -168,18 +176,19 @@ fn createWindow() void {
                 xbox.XINPUT_GAMEPAD_BACK, &newController.back);
         }
 
-        var playCursor: u32 = 0;
-        var writeCursor: u32 = 0;
-        check(secondaryBuffer.?.GetCurrentPosition(&playCursor, &writeCursor));
+        var byteToLock: u32 = 0;
+        var targetCursor: u32 = 0;
+        var bytesToWrite: u32 = 0;
+        if (soundIsValid) {
+            byteToLock = (soundOutput.runningSampleIndex * bytes) % bufferSize;
 
-        const targetCursor = (playCursor + latencyBytes) % bufferSize;
-        const offset: u32 = (soundOutput.runningSampleIndex * bytes) % bufferSize;
-        var bytesToWrite: u32 = undefined;
-        if (offset > targetCursor) {
-            bytesToWrite = bufferSize - offset;
-            bytesToWrite += targetCursor;
-        } else {
-            bytesToWrite = targetCursor - offset;
+            targetCursor = (lastPlayCursor + (soundOutput.latencySampleCount * bytes)) % bufferSize;
+            if (byteToLock > targetCursor) {
+                bytesToWrite = bufferSize - byteToLock;
+                bytesToWrite += targetCursor;
+            } else {
+                bytesToWrite = targetCursor - byteToLock;
+            }
         }
 
         var soundBuffer = game.SoundBuffer{
@@ -195,10 +204,32 @@ fn createWindow() void {
         };
         game.gameUpdateAndRender(&gameState, newInput, &buffer, &soundBuffer);
 
-        if (bytesToWrite != 0)
-            win32FillSoundBuffer(&soundOutput, offset, bytesToWrite, &soundBuffer);
+        if (soundIsValid and bytesToWrite != 0) {
+            win32FillSoundBuffer(&soundOutput, byteToLock, bytesToWrite, &soundBuffer);
+        }
+
+        win32DebugSyncDisplay(&screenBuffer, &debugTimeMarkers, &soundOutput);
 
         win32UpdateWindow(hdc);
+
+        var playCursor: u32 = 0;
+        var writeCursor: u32 = 0;
+        check(secondaryBuffer.?.GetCurrentPosition(&playCursor, &writeCursor));
+
+        lastPlayCursor = playCursor;
+        if (!soundIsValid) {
+            soundOutput.runningSampleIndex = writeCursor / bytes;
+            soundIsValid = true;
+        }
+
+        var marker = &debugTimeMarkers[debugTimeMarkerIndex];
+        debugTimeMarkerIndex += 1;
+        if (debugTimeMarkerIndex >= debugTimeMarkers.len) {
+            debugTimeMarkerIndex = 0;
+        }
+
+        marker.playCursor = playCursor;
+        marker.writeCursor = writeCursor;
 
         std.mem.swap(input.Input, &oldInput, &newInput);
 
@@ -349,6 +380,7 @@ fn win32InitDSound(window: ?win32.foundation.HWND, output: Win32SoundOutput) voi
 
     bufferDesc = std.mem.zeroes(sound.DSBUFFERDESC);
     bufferDesc.dwSize = @sizeOf(sound.DSBUFFERDESC);
+    bufferDesc.dwFlags = sound.DSBCAPS_GETCURRENTPOSITION2;
     bufferDesc.dwBufferBytes = output.secondaryBufferSize;
     bufferDesc.lpwfxFormat = &waveFormat;
 
@@ -399,6 +431,57 @@ fn win32ClearBuffer(soundOutput: *Win32SoundOutput) void {
 
     check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
 }
+
+fn win32DebugDrawVertical(
+    backBuffer: *win32ScreenBuffer,
+    x: usize,
+    top: usize,
+    bottom: usize,
+    color: game.Color,
+) void {
+    const w: usize = @intCast(backBuffer.width);
+    for (top..bottom) |index| {
+        backBuffer.memory.?[index * w + x] = color;
+    }
+}
+
+fn win32DrawSoundBufferMarker(
+    backBuffer: *win32ScreenBuffer,
+    c: f32,
+    padX: u32,
+    top: usize,
+    bottom: usize,
+    value: u32,
+    color: game.Color,
+) void {
+    const xReal32 = c * @as(f32, @floatFromInt(value));
+    const x = padX + @as(usize, @intFromFloat(xReal32));
+    win32DebugDrawVertical(backBuffer, x, top, bottom, color);
+}
+
+fn win32DebugSyncDisplay(
+    backBuffer: *win32ScreenBuffer,
+    markers: []Win32TimeMarker,
+    soundOutput: *Win32SoundOutput,
+) void {
+    const padX = 16;
+    const padY = 16;
+
+    const top = padY;
+    const bottom: usize = @intCast(backBuffer.height - padY);
+
+    const a: f32 = @floatFromInt(backBuffer.width - 2 * padX);
+    const c = a / @as(f32, @floatFromInt(soundOutput.secondaryBufferSize));
+    const white = game.Color{ .r = 255, .g = 255, .b = 255, .a = 255 };
+    // const red = game.Color{ .r = 255, .g = 0, .b = 0, .a = 255 };
+
+    for (markers) |marker| {
+        win32DrawSoundBufferMarker(backBuffer, c, padX, top, bottom, marker.playCursor, white);
+        // win32DrawSoundBufferMarker(backBuffer, c, padX, top, bottom, marker.writeCursor, red);
+    }
+}
+
+const Win32TimeMarker = struct { playCursor: u32 = 0, writeCursor: u32 = 0 };
 
 fn createDIBSection() void {
     screenBuffer.deinit();
