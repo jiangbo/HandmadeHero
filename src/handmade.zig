@@ -7,6 +7,7 @@ pub const GameState = struct {
     toneHz: f32 = 512,
     blueOffset: i32 = 0,
     greenOffset: i32 = 0,
+    tSine: f32 = 0,
 };
 
 pub const ScreenBuffer = struct {
@@ -51,18 +52,18 @@ pub fn gameUpdateAndRender(state: *GameState, input: Input, buffer: *ScreenBuffe
 
     renderWeirdGradient(buffer, state.blueOffset, state.greenOffset);
 }
-var tSine: f32 = 0;
-const toneVolume: u32 = 3000;
-fn outputSound(buffer: *SoundBuffer, hz: f32) void {
+
+fn outputSound(state: *GameState, buffer: *SoundBuffer, hz: f32) void {
+    const toneVolume: u32 = 3000;
     const samplePerSecond: f32 = @floatFromInt(buffer.samplesPerSecond);
     var sampleOut = buffer.samples;
     for (0..@intCast(buffer.sampleCount)) |_| {
-        const sampleValue: i16 = @intFromFloat(@sin(tSine) * toneVolume);
+        const sampleValue: i16 = @intFromFloat(@sin(state.tSine) * toneVolume);
         sampleOut[0] = sampleValue;
         sampleOut[1] = sampleValue;
         sampleOut += 2;
-        tSine += (2.0 * std.math.pi) / (samplePerSecond / hz);
-        if (tSine >= 2.0 * std.math.pi) tSine -= 2.0 * std.math.pi;
+        state.tSine += (2.0 * std.math.pi) / (samplePerSecond / hz);
+        if (state.tSine >= 2.0 * std.math.pi) state.tSine -= 2.0 * std.math.pi;
     }
 }
 
@@ -80,5 +81,5 @@ fn renderWeirdGradient(buffer: *ScreenBuffer, offsetX: i32, offsetY: i32) void {
 }
 
 pub fn getSoundSamples(state: *GameState, soundBuffer: *SoundBuffer) void {
-    outputSound(soundBuffer, state.toneHz);
+    outputSound(state, soundBuffer, state.toneHz);
 }
