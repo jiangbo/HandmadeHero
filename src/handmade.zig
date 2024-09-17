@@ -8,6 +8,9 @@ pub const GameState = struct {
     blueOffset: i32 = 0,
     greenOffset: i32 = 0,
     tSine: f32 = 0,
+    playerX: i32 = 100,
+    playerY: i32 = 100,
+    jump: f32 = 0,
 };
 
 pub const ScreenBuffer = struct {
@@ -48,22 +51,51 @@ pub fn gameUpdateAndRender(state: *GameState, input: Input, buffer: *ScreenBuffe
         }
 
         if (controller.actionDown.endedDown) state.greenOffset += 1;
+
+        state.playerX += 4 * @as(i32, @intFromFloat(controller.stickAverageX));
+
+        state.playerY -= 4 * @as(i32, @intFromFloat(controller.stickAverageY));
+
+        if (state.jump > 0) {
+            const jump = 5 * @sin(0.5 * std.math.pi * state.jump);
+            state.playerY += @as(i32, @intFromFloat(jump));
+        }
+
+        if (controller.actionDown.endedDown) {
+            state.jump = 4;
+        }
+        state.jump -= 0.033;
     }
+    state.playerX = std.math.clamp(state.playerX, 0, buffer.width - playerSize);
+    state.playerY = std.math.clamp(state.playerY, 0, buffer.height - playerSize);
 
     renderWeirdGradient(buffer, state.blueOffset, state.greenOffset);
+    renderPlayer(buffer, @intCast(state.playerX), @intCast(state.playerY));
 }
 
 fn outputSound(state: *GameState, buffer: *SoundBuffer, hz: f32) void {
-    const toneVolume: u32 = 3000;
     const samplePerSecond: f32 = @floatFromInt(buffer.samplesPerSecond);
     var sampleOut = buffer.samples;
     for (0..@intCast(buffer.sampleCount)) |_| {
-        const sampleValue: i16 = @intFromFloat(@sin(state.tSine) * toneVolume);
+        const sampleValue: i16 = 0;
+        // const toneVolume: u32 = 3000;
+        // const sampleValue: i16 = @intFromFloat(@sin(state.tSine) * toneVolume);
         sampleOut[0] = sampleValue;
         sampleOut[1] = sampleValue;
         sampleOut += 2;
         state.tSine += (2.0 * std.math.pi) / (samplePerSecond / hz);
         if (state.tSine >= 2.0 * std.math.pi) state.tSine -= 2.0 * std.math.pi;
+    }
+}
+
+const playerSize: u8 = 10;
+fn renderPlayer(buffer: *ScreenBuffer, playerX: u32, playerY: u32) void {
+    const playerColor = Color{ .r = 0xFF, .g = 0x00, .b = 0xFF, .a = 0xFF };
+
+    const w: u16 = @intCast(buffer.width);
+    for (playerY..playerY + playerSize) |y| {
+        const dest = buffer.memory.?[y * w + playerX ..][0..playerSize];
+        @memset(dest, playerColor);
     }
 }
 
