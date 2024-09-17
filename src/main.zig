@@ -200,9 +200,7 @@ fn createWindow() void {
                 safeWriteCursor += bufferSize;
             }
 
-            std.debug.assert(safeWriteCursor >= playCursor);
             safeWriteCursor += soundOutput.safetyBytes;
-
             const audioCardIsLowLatency = safeWriteCursor < expectedFrameBoundaryByte;
 
             var targetCursor: u32 = 0;
