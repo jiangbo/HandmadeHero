@@ -10,7 +10,6 @@ const WIDTH: i32 = 1280;
 const HEIGHT: i32 = 720;
 
 var globalRunning: bool = true;
-var globalPause: bool = false;
 
 var windowWidth: i32 = 0;
 var windowHeight: i32 = 0;
@@ -99,149 +98,147 @@ fn createWindow() void {
         newKeyboard.copyEndedDown(oldKeyboard);
         win32ProcessPendingMessages(newKeyboard);
 
-        if (!globalPause) {
-            for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
-                const oldController = &oldInput.controllers[index + 1];
-                var newController = &newInput.controllers[index + 1];
+        for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
+            const oldController = &oldInput.controllers[index + 1];
+            var newController = &newInput.controllers[index + 1];
 
-                var state: xbox.XINPUT_STATE = undefined;
-                const success: u32 = @intFromEnum(win32.foundation.ERROR_SUCCESS);
-                if (success != xInputGetState(@intCast(index), &state)) continue;
+            var state: xbox.XINPUT_STATE = undefined;
+            const success: u32 = @intFromEnum(win32.foundation.ERROR_SUCCESS);
+            if (success != xInputGetState(@intCast(index), &state)) continue;
 
-                newController.connected = true;
-                const pad = &state.Gamepad;
+            newController.connected = true;
+            const pad = &state.Gamepad;
 
-                const deadZone: f32 = @floatFromInt(xbox.XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-                const thumbLX: f32 = @floatFromInt(pad.sThumbLX);
-                const thumbLY: f32 = @floatFromInt(pad.sThumbLY);
-                newController.stickAverageX = win32ProcessStick(thumbLX, deadZone);
-                newController.stickAverageY = win32ProcessStick(thumbLY, deadZone);
+            const deadZone: f32 = @floatFromInt(xbox.XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
+            const thumbLX: f32 = @floatFromInt(pad.sThumbLX);
+            const thumbLY: f32 = @floatFromInt(pad.sThumbLY);
+            newController.stickAverageX = win32ProcessStick(thumbLX, deadZone);
+            newController.stickAverageY = win32ProcessStick(thumbLY, deadZone);
 
-                if (newController.stickAverageX != 0.0 or newController.stickAverageY != 0.0) {
-                    newController.analog = true;
-                }
-
-                if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_UP != 0) {
-                    newController.stickAverageY = 1.0;
-                    newController.analog = false;
-                }
-
-                if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_DOWN != 0) {
-                    newController.stickAverageY = -1.0;
-                    newController.analog = false;
-                }
-
-                if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_LEFT != 0) {
-                    newController.stickAverageX = -1.0;
-                    newController.analog = false;
-                }
-
-                if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_RIGHT != 0) {
-                    newController.stickAverageX = 1.0;
-                    newController.analog = false;
-                }
-
-                const threshold: f32 = 0.5;
-                var value: u32 = if (newController.stickAverageX < -threshold) 1 else 0;
-                win32ProcessXInputDigitalButton(value, oldController.moveLeft, 1, &newController.moveLeft);
-
-                value = if (newController.stickAverageX > threshold) 1 else 0;
-                win32ProcessXInputDigitalButton(value, oldController.moveRight, 1, &newController.moveRight);
-
-                value = if (newController.stickAverageY < -threshold) 1 else 0;
-                win32ProcessXInputDigitalButton(value, oldController.moveDown, 1, &newController.moveDown);
-
-                value = if (newController.stickAverageY > threshold) 1 else 0;
-                win32ProcessXInputDigitalButton(value, oldController.moveUp, 1, &newController.moveUp);
-
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionDown, //
-                    xbox.XINPUT_GAMEPAD_A, &newController.actionDown);
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionRight, //
-                    xbox.XINPUT_GAMEPAD_B, &newController.actionRight);
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionLeft, //
-                    xbox.XINPUT_GAMEPAD_X, &newController.actionLeft);
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionUp, //
-                    xbox.XINPUT_GAMEPAD_Y, &newController.actionUp);
-
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.leftShoulder, //
-                    xbox.XINPUT_GAMEPAD_LEFT_SHOULDER, &newController.leftShoulder);
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.rightShoulder, //
-                    xbox.XINPUT_GAMEPAD_RIGHT_SHOULDER, &newController.rightShoulder);
-
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.start, //
-                    xbox.XINPUT_GAMEPAD_START, &newController.start);
-                win32ProcessXInputDigitalButton(pad.wButtons, oldController.back, //
-                    xbox.XINPUT_GAMEPAD_BACK, &newController.back);
+            if (newController.stickAverageX != 0.0 or newController.stickAverageY != 0.0) {
+                newController.analog = true;
             }
 
-            var buffer: game.ScreenBuffer = .{
-                .memory = screenBuffer.memory,
-                .width = screenBuffer.width,
-                .height = screenBuffer.height,
-            };
-            game.gameUpdateAndRender(&gameState, newInput, &buffer);
-
-            var playCursor: u32 = 0;
-            var writeCursor: u32 = 0;
-            check(secondaryBuffer.?.GetCurrentPosition(&playCursor, &writeCursor));
-
-            if (!soundIsValid) {
-                soundOutput.runningSampleIndex = writeCursor / bytes;
-                soundIsValid = true;
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_UP != 0) {
+                newController.stickAverageY = 1.0;
+                newController.analog = false;
             }
 
-            const byteToLock = (soundOutput.runningSampleIndex * bytes) % bufferSize;
-            const expectedSoundBytesPerFrame = (samples * bytes) / gameUpdateHz;
-
-            const expectedFrameBoundaryByte = playCursor + expectedSoundBytesPerFrame;
-
-            var safeWriteCursor = writeCursor;
-            if (safeWriteCursor < playCursor) {
-                safeWriteCursor += bufferSize;
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_DOWN != 0) {
+                newController.stickAverageY = -1.0;
+                newController.analog = false;
             }
 
-            safeWriteCursor += soundOutput.safetyBytes;
-            const audioCardIsLowLatency = safeWriteCursor < expectedFrameBoundaryByte;
-
-            var targetCursor: u32 = 0;
-            if (audioCardIsLowLatency) {
-                targetCursor = expectedFrameBoundaryByte + expectedSoundBytesPerFrame;
-            } else {
-                targetCursor = (writeCursor + expectedSoundBytesPerFrame +
-                    soundOutput.safetyBytes);
-            }
-            targetCursor = targetCursor % bufferSize;
-
-            var bytesToWrite: u32 = 0;
-            if (byteToLock > targetCursor) {
-                bytesToWrite = bufferSize - byteToLock;
-                bytesToWrite += targetCursor;
-            } else {
-                bytesToWrite = targetCursor - byteToLock;
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_LEFT != 0) {
+                newController.stickAverageX = -1.0;
+                newController.analog = false;
             }
 
-            var soundBuffer = game.SoundBuffer{
-                .samplesPerSecond = @intCast(soundOutput.samplesPerSecond),
-                .sampleCount = bytesToWrite / soundOutput.bytesPerSample,
-                .samples = allocBuffer.ptr,
-            };
-            game.getSoundSamples(&gameState, &soundBuffer);
-            if (bytesToWrite != 0) {
-                win32FillSoundBuffer(&soundOutput, byteToLock, bytesToWrite, &soundBuffer);
+            if (pad.wButtons & xbox.XINPUT_GAMEPAD_DPAD_RIGHT != 0) {
+                newController.stickAverageX = 1.0;
+                newController.analog = false;
             }
 
-            win32UpdateWindow(hdc);
+            const threshold: f32 = 0.5;
+            var value: u32 = if (newController.stickAverageX < -threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveLeft, 1, &newController.moveLeft);
 
-            std.mem.swap(input.Input, &oldInput, &newInput);
+            value = if (newController.stickAverageX > threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveRight, 1, &newController.moveRight);
 
-            const workTime = timer.read();
-            std.log.debug("work time: {}", .{workTime});
+            value = if (newController.stickAverageY < -threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveDown, 1, &newController.moveDown);
 
-            std.time.sleep(targetNanoPerFrame -| workTime);
-            const delta = timer.lap();
-            std.log.debug("frame time: {}, fps: {}", .{ delta, std.time.ns_per_s / delta });
-            timer.reset();
+            value = if (newController.stickAverageY > threshold) 1 else 0;
+            win32ProcessXInputDigitalButton(value, oldController.moveUp, 1, &newController.moveUp);
+
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionDown, //
+                xbox.XINPUT_GAMEPAD_A, &newController.actionDown);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionRight, //
+                xbox.XINPUT_GAMEPAD_B, &newController.actionRight);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionLeft, //
+                xbox.XINPUT_GAMEPAD_X, &newController.actionLeft);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.actionUp, //
+                xbox.XINPUT_GAMEPAD_Y, &newController.actionUp);
+
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.leftShoulder, //
+                xbox.XINPUT_GAMEPAD_LEFT_SHOULDER, &newController.leftShoulder);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.rightShoulder, //
+                xbox.XINPUT_GAMEPAD_RIGHT_SHOULDER, &newController.rightShoulder);
+
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.start, //
+                xbox.XINPUT_GAMEPAD_START, &newController.start);
+            win32ProcessXInputDigitalButton(pad.wButtons, oldController.back, //
+                xbox.XINPUT_GAMEPAD_BACK, &newController.back);
         }
+
+        var buffer: game.ScreenBuffer = .{
+            .memory = screenBuffer.memory,
+            .width = screenBuffer.width,
+            .height = screenBuffer.height,
+        };
+        game.gameUpdateAndRender(&gameState, newInput, &buffer);
+
+        var playCursor: u32 = 0;
+        var writeCursor: u32 = 0;
+        check(secondaryBuffer.?.GetCurrentPosition(&playCursor, &writeCursor));
+
+        if (!soundIsValid) {
+            soundOutput.runningSampleIndex = writeCursor / bytes;
+            soundIsValid = true;
+        }
+
+        const byteToLock = (soundOutput.runningSampleIndex * bytes) % bufferSize;
+        const expectedSoundBytesPerFrame = (samples * bytes) / gameUpdateHz;
+
+        const expectedFrameBoundaryByte = playCursor + expectedSoundBytesPerFrame;
+
+        var safeWriteCursor = writeCursor;
+        if (safeWriteCursor < playCursor) {
+            safeWriteCursor += bufferSize;
+        }
+
+        safeWriteCursor += soundOutput.safetyBytes;
+        const audioCardIsLowLatency = safeWriteCursor < expectedFrameBoundaryByte;
+
+        var targetCursor: u32 = 0;
+        if (audioCardIsLowLatency) {
+            targetCursor = expectedFrameBoundaryByte + expectedSoundBytesPerFrame;
+        } else {
+            targetCursor = (writeCursor + expectedSoundBytesPerFrame +
+                soundOutput.safetyBytes);
+        }
+        targetCursor = targetCursor % bufferSize;
+
+        var bytesToWrite: u32 = 0;
+        if (byteToLock > targetCursor) {
+            bytesToWrite = bufferSize - byteToLock;
+            bytesToWrite += targetCursor;
+        } else {
+            bytesToWrite = targetCursor - byteToLock;
+        }
+
+        var soundBuffer = game.SoundBuffer{
+            .samplesPerSecond = @intCast(soundOutput.samplesPerSecond),
+            .sampleCount = bytesToWrite / soundOutput.bytesPerSample,
+            .samples = allocBuffer.ptr,
+        };
+        game.getSoundSamples(&gameState, &soundBuffer);
+        if (bytesToWrite != 0) {
+            win32FillSoundBuffer(&soundOutput, byteToLock, bytesToWrite, &soundBuffer);
+        }
+
+        win32UpdateWindow(hdc);
+
+        std.mem.swap(input.Input, &oldInput, &newInput);
+
+        const workTime = timer.read();
+        std.log.debug("work time: {}", .{workTime});
+
+        std.time.sleep(targetNanoPerFrame -| workTime);
+        const delta = timer.lap();
+        std.log.debug("frame time: {}, fps: {}", .{ delta, std.time.ns_per_s / delta });
+        timer.reset();
     }
 }
 
@@ -289,9 +286,6 @@ fn win32ProcessPendingMessages(keyboard: *input.ControllerInput) void {
                     'D' => win32ProcessKeyboard(&keyboard.moveRight, isDown),
                     'Q' => win32ProcessKeyboard(&keyboard.leftShoulder, isDown),
                     'E' => win32ProcessKeyboard(&keyboard.rightShoulder, isDown),
-                    'P' => {
-                        if (isDown) globalPause = !globalPause;
-                    },
                     else => {
                         const key = win32.ui.input.keyboard_and_mouse;
                         const wParam: key.VIRTUAL_KEY = @enumFromInt(message.wParam);
