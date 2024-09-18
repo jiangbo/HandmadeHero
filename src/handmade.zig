@@ -3,7 +3,10 @@ const Input = @import("input.zig").Input;
 
 pub const Color = extern struct { b: u8 = 0, g: u8 = 0, r: u8 = 0, a: u8 = 0 };
 
-pub const GameState = struct {};
+pub const GameState = struct {
+    playerX: i32 = 100,
+    playerY: i32 = 100,
+};
 
 pub const ScreenBuffer = struct {
     memory: ?[]Color = null,
@@ -39,14 +42,74 @@ fn drawRectangle(buffer: *ScreenBuffer, rect: Rect, color: Color) void {
 }
 
 pub fn gameUpdateAndRender(state: *GameState, input: Input, buffer: *ScreenBuffer) void {
-    for (input.controllers) |_| {}
-    _ = state;
+    for (input.controllers) |controller| {
+        var playerX: i32, var playerY: i32 = .{ 0, 0 };
+        if (controller.moveUp.endedDown) playerY = -1;
+        if (controller.moveDown.endedDown) playerY = 1;
+        if (controller.moveLeft.endedDown) playerX = -1;
+        if (controller.moveRight.endedDown) playerX = 1;
+
+        const nano: i32 = @intCast(input.nanoPerFrame / 10000000);
+        state.playerX += nano * playerX;
+        state.playerY += nano * playerY;
+    }
+
+    const tileMap: [width * height]u8 = .{
+        1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, //
+        1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
+        1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
+        0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1,
+        1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1,
+        1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1,
+        1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1,
+    };
+
+    const upperLeftX: i32 = -30;
+    const upperLeftY: i32 = 0;
+    const tileWidth: i32 = 60;
+    const tileHeight: i32 = 60;
 
     var rect = Rect{ .maxX = buffer.width, .maxY = buffer.height };
     drawRectangle(buffer, rect, .{ .r = 0xFF, .g = 0x00, .b = 0xFF });
-    rect = Rect{ .minX = 10, .minY = 10, .maxX = 40, .maxY = 40 };
-    drawRectangle(buffer, rect, .{ .g = 0xFF, .b = 0xFF });
+
+    for (&tileMap, 0..) |tile, index| {
+        const color: Color = if (tile == 1)
+            .{ .r = 0xFF, .g = 0xFF, .b = 0xFF }
+        else
+            .{ .r = 128, .g = 128, .b = 128 };
+
+        const i: i32 = @intCast(index);
+        const minX: i32 = upperLeftX + tileWidth * @mod(i, width);
+        const minY: i32 = upperLeftY + tileHeight * @divTrunc(i, width);
+        rect = .{
+            .minX = minX,
+            .minY = minY,
+            .maxX = minX + tileWidth,
+            .maxY = minY + tileHeight,
+        };
+
+        drawRectangle(buffer, rect, color);
+    }
+
+    const playerWidth = tileWidth / 4 * 3;
+    const playerHeight = tileHeight;
+    const playerLeft = state.playerX - playerWidth / 2;
+    const playerTop = state.playerY - playerHeight;
+
+    rect = Rect{
+        .minX = std.math.clamp(playerLeft, 0, buffer.width - playerWidth),
+        .minY = std.math.clamp(playerTop, 0, buffer.width - playerHeight),
+        .maxX = std.math.clamp(playerLeft + playerWidth, playerWidth, buffer.width),
+        .maxY = std.math.clamp(playerTop + playerHeight, playerHeight, buffer.height),
+    };
+    // std.log.debug("player rect: {any}", .{rect});
+    drawRectangle(buffer, rect, .{ .r = 0xFF });
 }
+
+const width = 17;
+const height = 9;
 
 fn outputSound(state: *GameState, buffer: *SoundBuffer, hz: f32) void {
     const samplePerSecond: f32 = @floatFromInt(buffer.samplesPerSecond);
@@ -75,19 +138,6 @@ fn renderPlayer(buffer: *ScreenBuffer, playerX: u32, playerY: u32) void {
         @memset(dest, playerColor);
     }
 }
-
-// fn renderWeirdGradient(buffer: *ScreenBuffer, offsetX: i32, offsetY: i32) void {
-//     const w: usize = @intCast(buffer.width);
-
-//     for (0..@as(usize, @intCast(buffer.height))) |y| {
-//         for (0..w) |x| {
-//             buffer.memory.?[x + y * w] = .{
-//                 .b = @truncate(x + @as(u32, @bitCast(offsetX))),
-//                 .g = @truncate(y + @as(u32, @bitCast(offsetY))),
-//             };
-//         }
-//     }
-// }
 
 pub fn getSoundSamples(state: *GameState, soundBuffer: *SoundBuffer) void {
     outputSound(state, soundBuffer, 400);

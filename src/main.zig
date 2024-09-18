@@ -86,7 +86,6 @@ fn createWindow() void {
     const gameInput: [2]input.Input = undefined;
     var newInput = gameInput[0];
     var oldInput = gameInput[1];
-    newInput.nanoToAdvanceOverUpdate = targetNanoPerFrame;
 
     _ = win32.media.timeBeginPeriod(1);
     var timer: std.time.Timer = std.time.Timer.start() catch unreachable;
@@ -95,6 +94,7 @@ fn createWindow() void {
     var soundIsValid = false;
 
     while (globalRunning) {
+        newInput.nanoPerFrame = targetNanoPerFrame;
         const oldKeyboard = &oldInput.controllers[0];
         const newKeyboard = &newInput.controllers[0];
         newKeyboard.* = std.mem.zeroes(input.ControllerInput);
@@ -258,6 +258,8 @@ fn createWindow() void {
 
         const workTime = timer.read();
         // std.log.debug("work time: {}", .{workTime});
+        // const logTime = timer.read();
+        // std.log.debug("log time: {}", .{logTime - workTime});
 
         std.time.sleep(targetNanoPerFrame -| workTime);
         // const delta = timer.lap();
@@ -304,7 +306,10 @@ fn win32ProcessPendingMessages(keyboard: *input.ControllerInput) void {
 
                 if (wasDown == isDown) continue;
                 switch (message.wParam) {
-                    'W' => win32ProcessKeyboard(&keyboard.moveUp, isDown),
+                    'W' => {
+                        std.log.debug("W pressed", .{});
+                        win32ProcessKeyboard(&keyboard.moveUp, isDown);
+                    },
                     'A' => win32ProcessKeyboard(&keyboard.moveLeft, isDown),
                     'S' => win32ProcessKeyboard(&keyboard.moveDown, isDown),
                     'D' => win32ProcessKeyboard(&keyboard.moveRight, isDown),
