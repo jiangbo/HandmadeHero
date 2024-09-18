@@ -54,6 +54,7 @@ pub const Input = struct {
     mouseX: i32 = 0,
     mouseY: i32 = 0,
     mouseButtons: [5]ButtonState = undefined,
+    nanoToAdvanceOverUpdate: u64 = 0,
 
     controllers: [5]ControllerInput = undefined,
 };

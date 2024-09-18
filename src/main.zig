@@ -6,8 +6,8 @@ const input = @import("input.zig");
 pub const UNICODE: bool = true;
 
 var allocator: std.mem.Allocator = undefined;
-const WIDTH: i32 = 1280;
-const HEIGHT: i32 = 720;
+const WIDTH: i32 = 960;
+const HEIGHT: i32 = 540;
 
 var globalRunning: bool = true;
 
@@ -86,6 +86,7 @@ fn createWindow() void {
     const gameInput: [2]input.Input = undefined;
     var newInput = gameInput[0];
     var oldInput = gameInput[1];
+    newInput.nanoToAdvanceOverUpdate = targetNanoPerFrame;
 
     _ = win32.media.timeBeginPeriod(1);
     var timer: std.time.Timer = std.time.Timer.start() catch unreachable;
