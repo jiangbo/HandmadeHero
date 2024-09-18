@@ -72,7 +72,7 @@ fn createWindow() void {
     win32LoadXinput();
     win32InitDSound(window, soundOutput);
     win32ClearBuffer(&soundOutput);
-    check(secondaryBuffer.?.Play(0, 0, sound.DSBPLAY_LOOPING));
+    check(secondaryBuffer.Play(0, 0, sound.DSBPLAY_LOOPING));
 
     const allocBuffer = allocator.alloc(i16, bufferSize) catch unreachable;
     defer allocator.free(allocBuffer);
@@ -204,7 +204,7 @@ fn createWindow() void {
 
         var playCursor: u32 = 0;
         var writeCursor: u32 = 0;
-        check(secondaryBuffer.?.GetCurrentPosition(&playCursor, &writeCursor));
+        check(secondaryBuffer.GetCurrentPosition(&playCursor, &writeCursor));
 
         if (!soundIsValid) {
             soundOutput.runningSampleIndex = writeCursor / bytes;
@@ -374,7 +374,7 @@ const Win32SoundOutput = struct {
 
 const sound = win32.media.audio.direct_sound;
 var directSoundCreate: *const @TypeOf(sound.DirectSoundCreate) = undefined;
-var secondaryBuffer: ?*sound.IDirectSoundBuffer = undefined;
+var secondaryBuffer: *sound.IDirectSoundBuffer = undefined;
 const loader = win32.system.library_loader;
 fn win32InitDSound(window: ?win32.foundation.HWND, output: Win32SoundOutput) void {
     if (loader.LoadLibraryW(win32.zig.L("dsound.dll"))) |library| {
@@ -408,7 +408,7 @@ fn win32InitDSound(window: ?win32.foundation.HWND, output: Win32SoundOutput) voi
     bufferDesc.dwBufferBytes = output.secondaryBufferSize;
     bufferDesc.lpwfxFormat = &waveFormat;
 
-    check(directSound.CreateSoundBuffer(&bufferDesc, &secondaryBuffer, null));
+    check(directSound.CreateSoundBuffer(&bufferDesc, @ptrCast(&secondaryBuffer), null));
 }
 
 fn win32FillSoundBuffer(
@@ -422,7 +422,7 @@ fn win32FillSoundBuffer(
     var region2: [*]i16 = undefined;
     var region2Size: u32 = 0;
 
-    check(secondaryBuffer.?.Lock(offset, bytesToWrite, //
+    check(secondaryBuffer.Lock(offset, bytesToWrite, //
         @ptrCast(&region1), &region1Size, @ptrCast(&region2), &region2Size, 0));
 
     var source = soundBuffer.samples[0 .. region1Size / 2];
@@ -438,7 +438,7 @@ fn win32FillSoundBuffer(
     for (0..@intCast(region2SampleCount)) |_| {
         soundOutput.runningSampleIndex += 1;
     }
-    check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
+    check(secondaryBuffer.Unlock(region1, region1Size, region2, region2Size));
 }
 
 fn win32ClearBuffer(soundOutput: *Win32SoundOutput) void {
@@ -447,13 +447,13 @@ fn win32ClearBuffer(soundOutput: *Win32SoundOutput) void {
     var region2: [*]i16 = undefined;
     var region2Size: u32 = 0;
 
-    check(secondaryBuffer.?.Lock(0, soundOutput.secondaryBufferSize, //
+    check(secondaryBuffer.Lock(0, soundOutput.secondaryBufferSize, //
         @ptrCast(&region1), &region1Size, @ptrCast(&region2), &region2Size, 0));
 
     @memset(region1[0 .. region1Size / 2], 0);
     @memset(region2[0 .. region2Size / 2], 0);
 
-    check(secondaryBuffer.?.Unlock(region1, region1Size, region2, region2Size));
+    check(secondaryBuffer.Unlock(region1, region1Size, region2, region2Size));
 }
 
 fn createDIBSection() void {
