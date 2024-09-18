@@ -51,5 +51,9 @@ pub const ControllerInput = struct {
 };
 
 pub const Input = struct {
+    mouseX: i32 = 0,
+    mouseY: i32 = 0,
+    mouseButtons: [5]ButtonState = undefined,
+
     controllers: [5]ControllerInput = undefined,
 };

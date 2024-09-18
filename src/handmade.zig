@@ -71,6 +71,13 @@ pub fn gameUpdateAndRender(state: *GameState, input: Input, buffer: *ScreenBuffe
 
     renderWeirdGradient(buffer, state.blueOffset, state.greenOffset);
     renderPlayer(buffer, @intCast(state.playerX), @intCast(state.playerY));
+
+    // 测试鼠标点击
+    if (!input.mouseButtons[0].endedDown) return;
+
+    const x = std.math.clamp(input.mouseX, 0, buffer.width - playerSize);
+    const y = std.math.clamp(input.mouseY, 0, buffer.height - playerSize);
+    renderPlayer(buffer, @intCast(x), @intCast(y));
 }
 
 fn outputSound(state: *GameState, buffer: *SoundBuffer, hz: f32) void {

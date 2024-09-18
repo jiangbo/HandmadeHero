@@ -78,6 +78,10 @@ fn createWindow() void {
     defer allocator.free(allocBuffer);
 
     const hdc = win32.graphics.gdi.GetDC(window);
+    defer _ = win32.graphics.gdi.ReleaseDC(window, hdc);
+
+    const monitorHz = win32.graphics.gdi.GetDeviceCaps(hdc, .VREFRESH);
+    std.log.debug("monitor refresh rate: {} Hz", .{monitorHz});
 
     const gameInput: [2]input.Input = undefined;
     var newInput = gameInput[0];
@@ -97,6 +101,25 @@ fn createWindow() void {
 
         newKeyboard.copyEndedDown(oldKeyboard);
         win32ProcessPendingMessages(newKeyboard);
+
+        var point = std.mem.zeroes(win32.foundation.POINT);
+        _ = win32.ui.windows_and_messaging.GetCursorPos(&point);
+        _ = win32.graphics.gdi.ScreenToClient(window, &point);
+        newInput.mouseX = point.x;
+        newInput.mouseY = point.y;
+
+        const key = win32.ui.input.keyboard_and_mouse;
+
+        var key_state = key.GetKeyState(@intFromEnum(key.VK_LBUTTON));
+        win32ProcessKeyboard(&newInput.mouseButtons[0], key_state < 0);
+        key_state = key.GetKeyState(@intFromEnum(key.VK_MBUTTON));
+        win32ProcessKeyboard(&newInput.mouseButtons[1], key_state < 0);
+        key_state = key.GetKeyState(@intFromEnum(key.VK_RBUTTON));
+        win32ProcessKeyboard(&newInput.mouseButtons[2], key_state < 0);
+        key_state = key.GetKeyState(@intFromEnum(key.VK_XBUTTON1));
+        win32ProcessKeyboard(&newInput.mouseButtons[3], key_state < 0);
+        key_state = key.GetKeyState(@intFromEnum(key.VK_XBUTTON2));
+        win32ProcessKeyboard(&newInput.mouseButtons[4], key_state < 0);
 
         for (0..@intCast(xbox.XUSER_MAX_COUNT)) |index| {
             const oldController = &oldInput.controllers[index + 1];
@@ -233,11 +256,11 @@ fn createWindow() void {
         std.mem.swap(input.Input, &oldInput, &newInput);
 
         const workTime = timer.read();
-        std.log.debug("work time: {}", .{workTime});
+        // std.log.debug("work time: {}", .{workTime});
 
         std.time.sleep(targetNanoPerFrame -| workTime);
-        const delta = timer.lap();
-        std.log.debug("frame time: {}, fps: {}", .{ delta, std.time.ns_per_s / delta });
+        // const delta = timer.lap();
+        // std.log.debug("frame time: {}, fps: {}", .{ delta, std.time.ns_per_s / delta });
         timer.reset();
     }
 }
