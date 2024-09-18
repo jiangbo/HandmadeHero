@@ -272,8 +272,8 @@ fn win32ProcessStick(value: f32, deadZoneThreshold: f32) f32 {
 }
 
 fn win32ProcessPendingMessages(keyboard: *input.ControllerInput) void {
-    var message = std.mem.zeroes(win32.ui.windows_and_messaging.MSG);
     const ui = win32.ui.windows_and_messaging;
+    var message = std.mem.zeroes(ui.MSG);
     while (ui.PeekMessage(&message, null, 0, 0, ui.PM_REMOVE) > 0) {
         switch (message.message) {
             ui.WM_QUIT => globalRunning = false,
