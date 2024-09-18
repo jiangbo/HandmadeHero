@@ -17,22 +17,6 @@ pub const SoundBuffer = struct {
     samples: [*]i16,
 };
 
-const RectF = struct {
-    minX: f32 = 0,
-    minY: f32 = 0,
-    maxX: f32 = 0,
-    maxY: f32 = 0,
-
-    fn toRect(self: RectF) Rect {
-        return Rect{
-            .minX = @floatFromInt(self.minX),
-            .minY = @floatFromInt(self.minY),
-            .maxX = @floatFromInt(self.maxX),
-            .maxY = @floatFromInt(self.maxY),
-        };
-    }
-};
-
 const Rect = struct {
     minX: i32 = 0,
     minY: i32 = 0,
