@@ -306,10 +306,7 @@ fn win32ProcessPendingMessages(keyboard: *input.ControllerInput) void {
 
                 if (wasDown == isDown) continue;
                 switch (message.wParam) {
-                    'W' => {
-                        std.log.debug("W pressed", .{});
-                        win32ProcessKeyboard(&keyboard.moveUp, isDown);
-                    },
+                    'W' => win32ProcessKeyboard(&keyboard.moveUp, isDown),
                     'A' => win32ProcessKeyboard(&keyboard.moveLeft, isDown),
                     'S' => win32ProcessKeyboard(&keyboard.moveDown, isDown),
                     'D' => win32ProcessKeyboard(&keyboard.moveRight, isDown),

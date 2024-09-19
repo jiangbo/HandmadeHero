@@ -100,12 +100,12 @@ pub fn gameUpdateAndRender(state: *GameState, input: Input, buffer: *ScreenBuffe
 
     rect = Rect{
         .minX = std.math.clamp(playerLeft, 0, buffer.width - playerWidth),
-        .minY = std.math.clamp(playerTop, 0, buffer.width - playerHeight),
+        .minY = std.math.clamp(playerTop, 0, buffer.height - playerHeight),
         .maxX = std.math.clamp(playerLeft + playerWidth, playerWidth, buffer.width),
         .maxY = std.math.clamp(playerTop + playerHeight, playerHeight, buffer.height),
     };
-    // std.log.debug("player rect: {any}", .{rect});
-    drawRectangle(buffer, rect, .{ .r = 0xFF });
+
+    drawRectangle(buffer, rect, .{ .r = 0xFF,.g = 0xFF });
 }
 
 const width = 17;
